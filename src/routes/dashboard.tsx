@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { Logo } from "@/components/Logo";
 import { Avatar } from "@/components/UserAvatar";
-import { Plus, LogOut } from "lucide-react";
+import { Plus, LogOut, Settings } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard")({
   component: DashboardPage,
@@ -65,12 +65,17 @@ function DashboardPage() {
       <header className="border-b border-border">
         <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
           <Logo className="text-xl" />
-          <button
-            onClick={async () => { await supabase.auth.signOut(); navigate({ to: "/login" }); }}
-            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1.5"
-          >
-            <LogOut className="h-3.5 w-3.5" /> Sign out
-          </button>
+          <div className="flex items-center gap-4">
+            <Link to="/settings" className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1.5">
+              <Settings className="h-3.5 w-3.5" /> Settings
+            </Link>
+            <button
+              onClick={async () => { await supabase.auth.signOut(); navigate({ to: "/login" }); }}
+              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1.5"
+            >
+              <LogOut className="h-3.5 w-3.5" /> Sign out
+            </button>
+          </div>
         </div>
       </header>
 

@@ -11,7 +11,7 @@ import {
 } from "@/lib/yofounder.functions";
 import { toast } from "sonner";
 import {
-  Github, Send, Sparkles, Copy, ExternalLink, ArrowLeft, X,
+  Github, Send, Sparkles, Copy, ExternalLink, ArrowLeft, X, Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -79,6 +79,9 @@ function WorkspacePage() {
               return <Avatar key={i} name={m.profiles?.display_name ?? "?"} color={m.profiles?.avatar_color ?? "#666"} size="sm" online={online} />;
             })}
           </div>
+          <Link to="/settings" className="text-muted-foreground hover:text-foreground" title="Settings">
+            <Settings className="h-4 w-4" />
+          </Link>
         </div>
         <nav className="px-4 md:px-6 flex gap-1 border-t border-border overflow-x-auto">
           {(["chat","prompts","vercel","supabase","domain"] as Tab[]).map((t) => (

@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DashboardRouteImport } from './routes/dashboard'
@@ -17,6 +18,11 @@ import { Route as WorkspacesNewRouteImport } from './routes/workspaces.new'
 import { Route as WorkspacesIdRouteImport } from './routes/workspaces.$id'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OnboardingRoute = OnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
@@ -58,6 +64,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
+  '/settings': typeof SettingsRoute
   '/invite/$token': typeof InviteTokenRoute
   '/workspaces/$id': typeof WorkspacesIdRoute
   '/workspaces/new': typeof WorkspacesNewRoute
@@ -67,6 +74,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
+  '/settings': typeof SettingsRoute
   '/invite/$token': typeof InviteTokenRoute
   '/workspaces/$id': typeof WorkspacesIdRoute
   '/workspaces/new': typeof WorkspacesNewRoute
@@ -77,6 +85,7 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
+  '/settings': typeof SettingsRoute
   '/invite/$token': typeof InviteTokenRoute
   '/workspaces/$id': typeof WorkspacesIdRoute
   '/workspaces/new': typeof WorkspacesNewRoute
@@ -88,6 +97,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/login'
     | '/onboarding'
+    | '/settings'
     | '/invite/$token'
     | '/workspaces/$id'
     | '/workspaces/new'
@@ -97,6 +107,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/login'
     | '/onboarding'
+    | '/settings'
     | '/invite/$token'
     | '/workspaces/$id'
     | '/workspaces/new'
@@ -106,6 +117,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/login'
     | '/onboarding'
+    | '/settings'
     | '/invite/$token'
     | '/workspaces/$id'
     | '/workspaces/new'
@@ -116,6 +128,7 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
+  SettingsRoute: typeof SettingsRoute
   InviteTokenRoute: typeof InviteTokenRoute
   WorkspacesIdRoute: typeof WorkspacesIdRoute
   WorkspacesNewRoute: typeof WorkspacesNewRoute
@@ -123,6 +136,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/onboarding': {
       id: '/onboarding'
       path: '/onboarding'
@@ -180,6 +200,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
+  SettingsRoute: SettingsRoute,
   InviteTokenRoute: InviteTokenRoute,
   WorkspacesIdRoute: WorkspacesIdRoute,
   WorkspacesNewRoute: WorkspacesNewRoute,
