@@ -51,10 +51,20 @@ function SettingsPage() {
     if (!user) { navigate({ to: "/login" }); return; }
     (async () => {
       const { data } = await supabase.from("profiles")
-        .select("display_name, avatar_color, ai_provider, github_username")
+        .select("display_name, avatar_color, ai_provider, github_username, anthropic_key, openai_key, github_token")
         .eq("id", user.id).single();
       if (data) {
-        setProfile(data);
+        // Don't keep the actual key strings in state — just presence flags
+        const p = {
+          display_name: data.display_name,
+          avatar_color: data.avatar_color,
+          ai_provider: data.ai_provider,
+          github_username: data.github_username,
+          has_anthropic: !!data.anthropic_key,
+          has_openai: !!data.openai_key,
+          has_github: !!data.github_token,
+        };
+        setProfile(p);
         setName(data.display_name ?? "");
         setColor(data.avatar_color ?? COLORS[0]);
         if (data.ai_provider) setProvider(data.ai_provider);
@@ -92,9 +102,14 @@ function SettingsPage() {
     await saveAi({ data: { provider, apiKey: aiKey.trim() } });
     setAiBusy(false);
     setAiKey("");
-    setAiState({ ok: true, msg: "Saved" });
-    setProfile((p: any) => ({ ...p, ai_provider: provider }));
-    toast.success("AI key updated");
+    setAiState({ ok: true, msg: "Saved!" });
+    setProfile((p: any) => ({
+      ...p,
+      ai_provider: provider,
+      has_anthropic: provider === "claude" ? true : p?.has_anthropic,
+      has_openai: provider === "gpt" ? true : p?.has_openai,
+    }));
+    toast.success("AI key saved");
   };
 
   const handleGhSave = async () => {
@@ -110,7 +125,7 @@ function SettingsPage() {
     setGhBusy(false);
     setGhToken("");
     setGhState({ ok: true, msg: `Connected as @${t.login}` });
-    setProfile((p: any) => ({ ...p, github_username: t.login }));
+    setProfile((p: any) => ({ ...p, github_username: t.login, has_github: true }));
     toast.success(`GitHub connected as @${t.login}`);
   };
 
