@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth";
 import { Logo } from "@/components/Logo";
 import { Avatar } from "@/components/UserAvatar";
 import {
-  respondAsSenderAi, respondAsCofounderAi, generatePrompt,
+  respondAsSenderAi, generatePrompt,
   createGithubIssue,
 } from "@/lib/yofounder.functions";
 import { toast } from "sonner";
@@ -92,7 +92,7 @@ function WorkspacePage() {
           </Link>
         </div>
         <nav className="px-4 md:px-6 flex gap-1 border-t border-border overflow-x-auto">
-          {(["chat","prompts","vercel","supabase","domain"] as Tab[]).map((t) => (
+          {(["chat","prompts","github","vercel","supabase","domain"] as Tab[]).map((t) => (
             <button key={t} onClick={() => { setTab(t); if (t === "prompts") setPromptDot(false); }}
               className={cn(
                 "relative px-3 md:px-4 py-2.5 text-xs uppercase tracking-wide transition border-b-2",
@@ -106,8 +106,9 @@ function WorkspacePage() {
       </header>
 
       <main className="flex-1 flex flex-col min-h-0">
-        {tab === "chat" && <ChatTab workspaceId={workspaceId} user={user} members={members} />}
+        {tab === "chat" && <ChatTab workspaceId={workspaceId} user={user} members={members} ws={ws} />}
         {tab === "prompts" && <PromptsTab workspaceId={workspaceId} user={user} onNewPrompt={() => setPromptDot(true)} />}
+        {tab === "github" && <GithubTab ws={ws} onWsUpdate={reloadWs} />}
         {tab === "vercel" && <VercelTab ws={ws} onWsUpdate={reloadWs} />}
         {tab === "supabase" && <SupabaseTab ws={ws} onWsUpdate={reloadWs} />}
         {tab === "domain" && <DomainTab ws={ws} onWsUpdate={reloadWs} />}
@@ -128,7 +129,6 @@ function ChatTab({ workspaceId, user, members }: any) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const respondSender = useServerFn(respondAsSenderAi);
-  const respondCo = useServerFn(respondAsCofounderAi);
   const genPrompt = useServerFn(generatePrompt);
 
   const membersById = useMemo(() => {
@@ -177,7 +177,6 @@ function ChatTab({ workspaceId, user, members }: any) {
       });
 
       respondSender({ data: { workspaceId } }).catch((e) => console.error(e));
-      respondCo({ data: { workspaceId } }).catch((e) => console.error(e));
     } catch (e: any) {
       toast.error(e?.message ?? "Send failed");
     } finally {
