@@ -1,84 +1,92 @@
-# YoFounder — Build Plan
 
-A multiplayer co-founder workspace where two humans + their respective AIs (Claude/GPT) chat together, generate Claude Code prompts, and ship them to GitHub.
+# Self-Contained Integrations + Guided Setup
 
-## Stack note (important)
+This is a large build. Below is the scope, the order I'll ship it in, and a few decisions I need from you before I start so I don't waste cycles.
 
-Your spec says "React + Vite + Supabase Edge Functions". This project is scaffolded on **TanStack Start** (React 19 + Vite 7) with **Lovable Cloud** (Supabase under the hood). I'll adapt cleanly:
+## Scope summary
 
-- **Routing**: TanStack Router file routes under `src/routes/` (same URLs you specified: `/login`, `/onboarding`, `/dashboard`, `/workspaces/new`, `/workspaces/$id`, `/invite/$token`).
-- **"Edge functions"**: Implemented as `createServerFn` (TanStack server functions). Same security model — keys stay server-side, never reach the browser. URLs like `/functions/v1/ai-respond` aren't needed; the client calls typed RPCs.
-- **Supabase Realtime**: Used directly from the browser client for the `messages` table — unchanged from your spec.
-- **Auth, DB, RLS, storage**: All via Lovable Cloud (Supabase).
+Rebuild four tabs inside `/workspaces/$id` so users never leave YoFounder:
 
-If you'd rather I literally deploy Supabase Edge Functions instead of TanStack server functions, say so and I'll switch — but server functions are the recommended path here and give identical guarantees.
+1. **GitHub tab** — 3-step guided setup (account → repo → token) when not connected. Once connected: repo summary + open issues + recent commits (already partly covered by the existing settings/saved token).
+2. **Vercel tab** — guided setup (account → token → pick project), then in-app dashboard: current deployment, history (last 10), build logs (auto-refresh while building), env vars (list/add/delete), redeploy button.
+3. **Supabase tab** — guided setup (account → project → URL + service_role key), then in-app dashboard: stats row, auth users + recent signups, tables list with data grid (paginate, add row, delete row), simple SQL editor, auth audit log.
+4. **Domain tab** — guided GoDaddy purchase flow, save domain, DNS checklist with persistence, "Check if live" health check.
 
-## Phase 1 — Foundation
+Plus:
+- Connection status dots (green/gray) next to each tab name in the workspace top bar.
+- New workspace columns: `vercel_token`, `vercel_project_id`, `vercel_project_name`, `supabase_url`, `supabase_service_key`, `dns_checklist` (already exists), `domain_last_checked_at`, `domain_last_status`.
+- All API calls go through **TanStack server functions** (this stack does not use Supabase Edge Functions for app-internal logic — your spec says `/functions/v1/...` but those will be `createServerFn` RPCs with identical security: tokens stay server-side, never reach the browser). Same guarantee, fewer moving parts.
 
-1. Enable Lovable Cloud (provisions Supabase).
-2. Database migration: `profiles`, `workspaces`, `workspace_members`, `workspace_invites`, `messages`, `prompts` with RLS + grants. Enable Realtime on `messages`. Trigger to auto-create profile on signup.
-3. Design system in `src/styles.css`: dark theme (#080808 bg, #f59e0b amber brand, indigo/emerald accents), DM Sans + IBM Plex Mono via Google Fonts, sharp corners, 1px borders.
+## Decisions I need from you
 
-## Phase 2 — Auth & Onboarding
+**1. Where do Vercel + Supabase credentials live?**
+Your spec implies **per workspace** (different project per workspace). That means the `vercel_token` and `supabase_service_key` go on the `workspaces` table — shared by every member of that workspace. Confirm that's right, or say "per user on profiles" if you'd rather each member connect their own.
 
-4. `/login` — email/password, dark, YoFounder logo + tagline.
-5. `/onboarding` — 3 steps: identity (name + avatar color), AI provider (Claude/GPT + key, tested via `testAiKey` serverFn), GitHub PAT (tested via `testGithubToken` serverFn). Keys stored on `profiles` row.
-6. `_authenticated` layout route gates the app.
+**2. Real Supabase SQL editor against the user's OWN Supabase project — confirm?**
+The "Supabase tab" lets a user paste their service_role key and then run arbitrary SQL against *their* project. That's powerful and a footgun (DROP TABLE, etc.). I'll ship it with a big red warning + a confirm dialog for destructive-looking statements (DROP/TRUNCATE/DELETE without WHERE). OK?
 
-## Phase 3 — Dashboard & Workspace creation
+**3. Build logs auto-refresh cadence**
+Vercel build logs while `building`: poll every 3s, stop on `ready`/`error`. OK or you want realtime?
 
-7. `/dashboard` — workspace cards grid + "New Workspace".
-8. `/workspaces/new` — form (name, repo, optional Vercel/Supabase URLs, GoDaddy domain, invite email). Creates workspace + owner membership + pending invite row with token.
-9. `/invite/$token` — accept flow, adds membership (max 8 members enforced).
+**4. Scope of this single turn**
+This is genuinely ~6–10 hours of focused work (4 large pages, ~15 server functions, 1 migration, status-dot wiring, guided flows with persisted progress, SQL grid component, env-var manager). I can ship it in two passes:
 
-## Phase 4 — Workspace shell
+- **Pass A (this turn):** migration + all server functions + GitHub tab + Vercel tab (setup flow + current deployment + history + redeploy) + connection dots.
+- **Pass B (next turn):** Vercel env vars + build logs viewer + full Supabase tab + Domain tab.
 
-10. `/workspaces/$id` — top bar (logo, name, repo link, member avatars with online/offline ring via presence, settings) + tab bar (Chat | Prompts | Vercel | Supabase | Domain). Active tab amber underline. Mobile = bottom tab nav.
+Or I attempt the whole thing in one giant turn and accept that some polish (loading states, edge cases) will land in a follow-up. **Tell me A+B or "go big".**
 
-## Phase 5 — Chat (core)
+## Plan (assuming defaults: per-workspace creds, SQL editor with warning, 3s poll, A+B split)
 
-11. Realtime message feed scoped to workspace. Auto-scroll, hover timestamps, avatar+initial, AI border colors (indigo Claude / emerald GPT), font split (Plex Mono for AI, DM Sans for humans).
-12. Input bar: textarea, 1000 char limit, Cmd+Enter send.
-13. Flow on send:
-    - Insert human message (Realtime delivers to co-founder instantly).
-    - Call `respondAsSenderAi` serverFn → inserts AI response.
-    - Call `respondAsCofounderAi` serverFn → 2s delay, inserts second AI response.
-    - Typing indicator (pulsing dots in sender color) driven by Realtime broadcast channel.
-14. Inline error message on AI failure ("Claude encountered an error — try again"), no crash.
-15. Floating "Generate Claude Code Prompt" button → `generatePrompt` serverFn → modal (review/edit/save → switches to Prompts tab).
+### Pass A
 
-## Phase 6 — Prompts tab
+1. **Migration**: add to `workspaces`:
+   - `vercel_token text`, `vercel_project_id text`, `vercel_project_name text`
+   - `supabase_url text`, `supabase_service_key text`
+   - `domain_last_checked_at timestamptz`, `domain_last_status int`
+   - `setup_progress jsonb default '{}'::jsonb` (tracks which guided steps each integration has completed: `{github: 2, vercel: 1, supabase: 0, domain: 0}`)
+   - Keep all existing RLS — workspace members can read/write their own workspace.
 
-16. Split view: list (status badge, draft=gray, sent=green) + detail (editable title + content, "Send to GitHub as Issue", "Copy Prompt"). On send: `createGithubIssue` serverFn, persists URL/number, status=sent, success banner + GitHub link.
-17. Notification dot on Prompts tab when new prompt arrives (Realtime on `prompts`).
+2. **Server functions** (`src/lib/integrations.functions.ts`):
+   - `testVercelToken({token})` → GET /v2/user → `{username, email}`
+   - `listVercelProjects({workspaceId})` → GET /v9/projects
+   - `saveVercelConnection({workspaceId, token, projectId, projectName})`
+   - `getVercelDeployments({workspaceId})` → GET /v6/deployments?projectId=&limit=10
+   - `triggerVercelDeploy({workspaceId})` → POST /v13/deployments
+   - `getVercelEnvVars({workspaceId})`
+   - `addVercelEnvVar({workspaceId, key, value, target})`
+   - `deleteVercelEnvVar({workspaceId, envId})`
+   - `getVercelBuildLogs({workspaceId, deploymentId})`
+   - `testSupabaseConnection({url, serviceKey})` — hit `${url}/rest/v1/` with apikey header
+   - `saveSupabaseConnection({workspaceId, url, serviceKey})`
+   - `getSupabaseReport({workspaceId})` — auth user count + recent signups + public tables + sizes
+   - `getSupabaseTableData({workspaceId, table, page})`
+   - `runSupabaseQuery({workspaceId, sql})` — proxies via PostgREST RPC or direct PG (will use the user-supplied service key over PostgREST `/rest/v1/rpc/` where possible; for raw SQL I'll create a `exec_sql` RPC instruction in the guided setup, OR use the SQL HTTP endpoint via `pg-meta` if available)
+   - `getSupabaseAuthLogs({workspaceId})`
+   - `checkDomainLive({workspaceId})` → fetch with 5s timeout, persist status
 
-## Phase 7 — Vercel / Supabase / Domain tabs
+3. **GitHub tab** (in `workspaces.$id.tsx` tab content): 3-step setup card when no token; once connected, show repo summary + link to settings to manage.
 
-18. **Vercel**: "Open Dashboard" button + iframe-blocked fallback note + manual deploy status checker (serverFn fetches title/status).
-19. **Supabase**: deep-link buttons (`/editor`, `/auth/users`, `/logs/explorer`) appended to project URL.
-20. **Domain**: domain display + GoDaddy link + DNS checklist (persisted checkboxes) + notes textarea.
+4. **Vercel tab**: 3-step setup → dashboard with current deploy card, history list, redeploy button.
 
-## Phase 8 — Polish & verify
+5. **Connection dots**: small colored dots in the tab bar, derived from a single `useQuery(['workspace-integrations', id])` that returns booleans.
 
-21. SEO meta on public routes, sitemap.xml/robots.txt.
-22. Manual smoke test: signup → onboarding → workspace → chat → prompt → GitHub issue.
+### Pass B
 
-## Technical details
+6. Vercel env vars manager + build logs viewer with 3s poll.
+7. Supabase tab full dashboard (stats, auth, tables grid, SQL editor with warning + confirm).
+8. Domain tab guided setup + checklist persistence + live check.
 
-- **Server functions** (replace "edge functions"):
-  - `testAiKey({ provider, apiKey })`
-  - `testGithubToken({ token })`
-  - `respondAsSenderAi({ workspaceId, messageId })`
-  - `respondAsCofounderAi({ workspaceId })` (2s delay)
-  - `generatePrompt({ workspaceId })` — Claude Sonnet, max_tokens 600, strips ```json fences
-  - `createGithubIssue({ workspaceId, promptId })`
-  - `checkDeploymentStatus({ url })`
-  - All wrapped with `requireSupabaseAuth`, 25s `AbortController` on external fetches, `max_tokens: 150` for chat.
-- **Models**: `claude-sonnet-4-5` and `gpt-4o` as specified, called with the user's own API key from their `profiles` row.
-- **RLS**: every table scoped via `workspace_members` membership; `has_workspace_access(workspace_id, user_id)` SECURITY DEFINER helper to avoid recursion. API keys on `profiles` only readable by the owner.
-- **Grants**: `GRANT SELECT, INSERT, UPDATE, DELETE` to `authenticated` on all user tables; `GRANT ALL` to `service_role`.
-- **Realtime**: `messages` table added to `supabase_realtime` publication. Presence + typing via Realtime broadcast channels keyed by workspace id.
-- **Max 8 members**: enforced in `acceptInvite` serverFn with a count check inside a transaction.
-- **Secrets**: User-supplied (Anthropic/OpenAI/GitHub) live on `profiles` (encrypted at rest by Postgres). No global LOVABLE_API_KEY needed since each user brings their own keys per spec.
+## Notes on the "edge functions" in your spec
 
-This is a large build — expect it across several steps. Reply "go" to start, or tell me what to adjust (e.g., "use real Supabase Edge Functions", "skip Vercel/Domain tabs for v1", "use Lovable AI Gateway instead of user-supplied keys").
+You wrote things like `/functions/v1/vercel-setup-test`. On this TanStack Start stack, those will be **typed server functions** (`createServerFn`) callable from the frontend as `await testVercelToken({data: {...}})`. The security model is identical (tokens stay on the server, validated by `requireSupabaseAuth` middleware, never exposed to the browser bundle). If you specifically want literal Supabase Edge Functions (separate deploy, Deno runtime, different log surface) say so and I'll switch — but server functions are the recommended path here.
+
+---
+
+**Reply with:**
+1. Confirm per-workspace creds (or "per user")
+2. Confirm SQL editor with warning (or "no raw SQL")
+3. Confirm A+B split (or "go big in one turn")
+4. Anything else to change
+
+Then I'll start shipping.
