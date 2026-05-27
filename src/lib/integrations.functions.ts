@@ -780,6 +780,36 @@ export const getGithubCommits = createServerFn({ method: "POST" })
     };
   });
 
+export const getGithubPRDetail = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({
+      workspaceId: z.string().uuid(),
+      prNumber: z.number().int().min(1).max(1_000_000),
+    }).parse(input)
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+    const ws = await getWorkspace(supabase, data.workspaceId);
+    if (!ws.github_repo) throw new Error("No repo connected");
+    const token = await getUserGithubToken(supabase, userId, data.workspaceId);
+    const [pr, files] = await Promise.all([
+      ghFetch(token, `/repos/${ws.github_repo}/pulls/${data.prNumber}`),
+      ghFetch(token, `/repos/${ws.github_repo}/pulls/${data.prNumber}/files?per_page=50`),
+    ]);
+    return {
+      body: pr?.body ?? "",
+      changed_files: pr?.changed_files ?? null,
+      files: (Array.isArray(files) ? files : []).map((f: any) => ({
+        filename: f.filename,
+        status: f.status,
+        additions: f.additions,
+        deletions: f.deletions,
+        patch: f.patch ?? null,
+      })),
+    };
+  });
+
 export const mergeGithubPR = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) =>
