@@ -59,8 +59,26 @@ function SettingsPage() {
         setColor(data.avatar_color ?? COLORS[0]);
         if (data.ai_provider) setProvider(data.ai_provider);
       }
+      const { data: ws } = await supabase.from("workspaces")
+        .select("id, name, github_repo")
+        .order("created_at", { ascending: true });
+      if (ws) {
+        setWorkspaces(ws as any);
+        setRepoEdits(Object.fromEntries(ws.map((w: any) => [w.id, w.github_repo ?? ""])));
+      }
     })();
   }, [user, loading, navigate]);
+
+  const handleRepoSave = async (id: string) => {
+    const val = (repoEdits[id] ?? "").trim();
+    if (!/^[\w.-]+\/[\w.-]+$/.test(val)) return toast.error("Repo must be in owner/repo format");
+    setRepoBusy(id);
+    const { error } = await supabase.from("workspaces").update({ github_repo: val }).eq("id", id);
+    setRepoBusy(null);
+    if (error) return toast.error(error.message);
+    setWorkspaces((ws) => ws.map((w) => w.id === id ? { ...w, github_repo: val } : w));
+    toast.success("Repo updated");
+  };
 
   const handleAiSave = async () => {
     if (!aiKey.trim()) return toast.error("Enter an API key");
