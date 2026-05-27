@@ -106,7 +106,7 @@ function WorkspacePage() {
       </header>
 
       <main className="flex-1 flex flex-col min-h-0">
-        {tab === "chat" && <ChatTab workspaceId={workspaceId} user={user} members={members} ws={ws} />}
+        {tab === "chat" && <ChatTab workspaceId={workspaceId} user={user} members={members} />}
         {tab === "prompts" && <PromptsTab workspaceId={workspaceId} user={user} onNewPrompt={() => setPromptDot(true)} />}
         {tab === "github" && <GithubTab ws={ws} onWsUpdate={reloadWs} />}
         {tab === "vercel" && <VercelTab ws={ws} onWsUpdate={reloadWs} />}
