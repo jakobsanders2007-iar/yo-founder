@@ -14,6 +14,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as WorkspacesNewRouteImport } from './routes/workspaces.new'
+import { Route as WorkspacesIdRouteImport } from './routes/workspaces.$id'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 
 const OnboardingRoute = OnboardingRouteImport.update({
@@ -41,6 +42,11 @@ const WorkspacesNewRoute = WorkspacesNewRouteImport.update({
   path: '/workspaces/new',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WorkspacesIdRoute = WorkspacesIdRouteImport.update({
+  id: '/workspaces/$id',
+  path: '/workspaces/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const InviteTokenRoute = InviteTokenRouteImport.update({
   id: '/invite/$token',
   path: '/invite/$token',
@@ -53,6 +59,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/workspaces/$id': typeof WorkspacesIdRoute
   '/workspaces/new': typeof WorkspacesNewRoute
 }
 export interface FileRoutesByTo {
@@ -61,6 +68,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/workspaces/$id': typeof WorkspacesIdRoute
   '/workspaces/new': typeof WorkspacesNewRoute
 }
 export interface FileRoutesById {
@@ -70,6 +78,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/workspaces/$id': typeof WorkspacesIdRoute
   '/workspaces/new': typeof WorkspacesNewRoute
 }
 export interface FileRouteTypes {
@@ -80,6 +89,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/invite/$token'
+    | '/workspaces/$id'
     | '/workspaces/new'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -88,6 +98,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/invite/$token'
+    | '/workspaces/$id'
     | '/workspaces/new'
   id:
     | '__root__'
@@ -96,6 +107,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/invite/$token'
+    | '/workspaces/$id'
     | '/workspaces/new'
   fileRoutesById: FileRoutesById
 }
@@ -105,6 +117,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
   InviteTokenRoute: typeof InviteTokenRoute
+  WorkspacesIdRoute: typeof WorkspacesIdRoute
   WorkspacesNewRoute: typeof WorkspacesNewRoute
 }
 
@@ -145,6 +158,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspacesNewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/workspaces/$id': {
+      id: '/workspaces/$id'
+      path: '/workspaces/$id'
+      fullPath: '/workspaces/$id'
+      preLoaderRoute: typeof WorkspacesIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/invite/$token': {
       id: '/invite/$token'
       path: '/invite/$token'
@@ -161,6 +181,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
   InviteTokenRoute: InviteTokenRoute,
+  WorkspacesIdRoute: WorkspacesIdRoute,
   WorkspacesNewRoute: WorkspacesNewRoute,
 }
 export const routeTree = rootRouteImport
