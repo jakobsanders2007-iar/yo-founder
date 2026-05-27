@@ -294,21 +294,12 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      is_workspace_member:
-        | { Args: { _workspace_id: string }; Returns: boolean }
-        | {
-            Args: { _user_id: string; _workspace_id: string }
-            Returns: boolean
-          }
-      is_workspace_owner:
-        | { Args: { _workspace_id: string }; Returns: boolean }
-        | {
-            Args: { _user_id: string; _workspace_id: string }
-            Returns: boolean
-          }
-      shares_workspace_with:
-        | { Args: { _other_user_id: string }; Returns: boolean }
-        | { Args: { _user_a: string; _user_b: string }; Returns: boolean }
+      is_workspace_member: { Args: { _workspace_id: string }; Returns: boolean }
+      is_workspace_owner: { Args: { _workspace_id: string }; Returns: boolean }
+      shares_workspace_with: {
+        Args: { _other_user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       ai_provider: "claude" | "gpt"
