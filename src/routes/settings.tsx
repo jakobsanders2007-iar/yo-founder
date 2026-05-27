@@ -210,7 +210,9 @@ function SettingsPage() {
           <h2 className="text-lg font-semibold mb-1">GitHub</h2>
           <p className="text-sm text-muted-foreground mb-4">
             {profile.github_username
-              ? <>Connected as <span className="text-foreground font-medium">@{profile.github_username}</span></>
+              ? <>Connected as <span className="text-foreground font-medium">@{profile.github_username}</span>
+                  <span className="ml-2 inline-flex items-center gap-1 text-success text-xs"><Check className="h-3.5 w-3.5" /> Connected</span>
+                </>
               : "Not connected"}
           </p>
           <label className="text-xs text-muted-foreground">Personal Access Token</label>
