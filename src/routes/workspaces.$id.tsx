@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth";
 import { Logo } from "@/components/Logo";
 import { Avatar } from "@/components/UserAvatar";
 import {
-  respondAsSenderAi, respondAsCofounderAi, generatePrompt,
+  respondAsSenderAi, generatePrompt,
   createGithubIssue,
 } from "@/lib/yofounder.functions";
 import { toast } from "sonner";
@@ -92,7 +92,7 @@ function WorkspacePage() {
           </Link>
         </div>
         <nav className="px-4 md:px-6 flex gap-1 border-t border-border overflow-x-auto">
-          {(["chat","prompts","vercel","supabase","domain"] as Tab[]).map((t) => (
+          {(["chat","prompts","github","vercel","supabase","domain"] as Tab[]).map((t) => (
             <button key={t} onClick={() => { setTab(t); if (t === "prompts") setPromptDot(false); }}
               className={cn(
                 "relative px-3 md:px-4 py-2.5 text-xs uppercase tracking-wide transition border-b-2",
@@ -108,6 +108,7 @@ function WorkspacePage() {
       <main className="flex-1 flex flex-col min-h-0">
         {tab === "chat" && <ChatTab workspaceId={workspaceId} user={user} members={members} />}
         {tab === "prompts" && <PromptsTab workspaceId={workspaceId} user={user} onNewPrompt={() => setPromptDot(true)} />}
+        {tab === "github" && <GithubTab ws={ws} onWsUpdate={reloadWs} />}
         {tab === "vercel" && <VercelTab ws={ws} onWsUpdate={reloadWs} />}
         {tab === "supabase" && <SupabaseTab ws={ws} onWsUpdate={reloadWs} />}
         {tab === "domain" && <DomainTab ws={ws} onWsUpdate={reloadWs} />}
@@ -128,7 +129,6 @@ function ChatTab({ workspaceId, user, members }: any) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const respondSender = useServerFn(respondAsSenderAi);
-  const respondCo = useServerFn(respondAsCofounderAi);
   const genPrompt = useServerFn(generatePrompt);
 
   const membersById = useMemo(() => {
@@ -177,7 +177,6 @@ function ChatTab({ workspaceId, user, members }: any) {
       });
 
       respondSender({ data: { workspaceId } }).catch((e) => console.error(e));
-      respondCo({ data: { workspaceId } }).catch((e) => console.error(e));
     } catch (e: any) {
       toast.error(e?.message ?? "Send failed");
     } finally {
@@ -215,7 +214,11 @@ function ChatTab({ workspaceId, user, members }: any) {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="flex-1 flex flex-col min-h-0 relative">
+      <button onClick={generate} disabled={generating}
+        className="absolute top-2 right-3 z-10 inline-flex items-center gap-1.5 border border-border bg-surface text-foreground/80 hover:text-foreground text-[11px] px-2.5 py-1.5 rounded hover:border-foreground disabled:opacity-50">
+        <Sparkles className="h-3 w-3" /> {generating ? "Generating..." : "Generate Claude Code Prompt"}
+      </button>
       <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin px-4 md:px-6 py-6 space-y-4">
         {messages.map((m) => {
           const sender = membersById[m.sender_user_id];
@@ -262,11 +265,7 @@ function ChatTab({ workspaceId, user, members }: any) {
         )}
       </div>
 
-      <div className="border-t border-border bg-surface relative">
-        <button onClick={generate} disabled={generating}
-          className="absolute -top-12 right-4 inline-flex items-center gap-1.5 bg-brand text-primary-foreground text-xs font-medium px-3 py-2 rounded shadow-lg hover:opacity-90 disabled:opacity-50">
-          <Sparkles className="h-3.5 w-3.5" /> {generating ? "Generating..." : "Generate Claude Code Prompt"}
-        </button>
+      <div className="border-t border-border bg-surface">
         <div className="px-4 md:px-6 py-3 flex gap-2 items-end">
           <textarea
             value={text} onChange={(e) => setText(e.target.value.slice(0, 1000))}

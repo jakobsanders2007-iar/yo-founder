@@ -51,10 +51,20 @@ function SettingsPage() {
     if (!user) { navigate({ to: "/login" }); return; }
     (async () => {
       const { data } = await supabase.from("profiles")
-        .select("display_name, avatar_color, ai_provider, github_username")
+        .select("display_name, avatar_color, ai_provider, github_username, anthropic_key, openai_key, github_token")
         .eq("id", user.id).single();
       if (data) {
-        setProfile(data);
+        // Don't keep the actual key strings in state — just presence flags
+        const p = {
+          display_name: data.display_name,
+          avatar_color: data.avatar_color,
+          ai_provider: data.ai_provider,
+          github_username: data.github_username,
+          has_anthropic: !!data.anthropic_key,
+          has_openai: !!data.openai_key,
+          has_github: !!data.github_token,
+        };
+        setProfile(p);
         setName(data.display_name ?? "");
         setColor(data.avatar_color ?? COLORS[0]);
         if (data.ai_provider) setProvider(data.ai_provider);
@@ -92,9 +102,14 @@ function SettingsPage() {
     await saveAi({ data: { provider, apiKey: aiKey.trim() } });
     setAiBusy(false);
     setAiKey("");
-    setAiState({ ok: true, msg: "Saved" });
-    setProfile((p: any) => ({ ...p, ai_provider: provider }));
-    toast.success("AI key updated");
+    setAiState({ ok: true, msg: "Saved!" });
+    setProfile((p: any) => ({
+      ...p,
+      ai_provider: provider,
+      has_anthropic: provider === "claude" ? true : p?.has_anthropic,
+      has_openai: provider === "gpt" ? true : p?.has_openai,
+    }));
+    toast.success("AI key saved");
   };
 
   const handleGhSave = async () => {
@@ -110,7 +125,7 @@ function SettingsPage() {
     setGhBusy(false);
     setGhToken("");
     setGhState({ ok: true, msg: `Connected as @${t.login}` });
-    setProfile((p: any) => ({ ...p, github_username: t.login }));
+    setProfile((p: any) => ({ ...p, github_username: t.login, has_github: true }));
     toast.success(`GitHub connected as @${t.login}`);
   };
 
@@ -145,15 +160,24 @@ function SettingsPage() {
           <h2 className="text-lg font-semibold mb-1">AI Provider</h2>
           <p className="text-sm text-muted-foreground mb-4">
             Current: <span className="text-foreground font-medium">{profile.ai_provider === "claude" ? "Claude" : profile.ai_provider === "gpt" ? "ChatGPT" : "Not set"}</span>
+            {((profile.ai_provider === "claude" && profile.has_anthropic) || (profile.ai_provider === "gpt" && profile.has_openai)) && (
+              <span className="ml-2 inline-flex items-center gap-1 text-success text-xs"><Check className="h-3.5 w-3.5" /> Connected</span>
+            )}
           </p>
           <div className="grid grid-cols-2 gap-3 mb-4">
-            {(["claude","gpt"] as const).map((p) => (
-              <button key={p} onClick={() => { setProvider(p); setAiState(null); }}
-                className={`p-3 border rounded text-left transition ${provider === p ? "border-brand bg-accent" : "border-border hover:border-muted-foreground"}`}>
-                <div className="font-medium text-sm">{p === "claude" ? "Claude" : "ChatGPT"}</div>
-                <div className="text-xs text-muted-foreground mt-0.5">{p === "claude" ? "Anthropic" : "OpenAI"}</div>
-              </button>
-            ))}
+            {(["claude","gpt"] as const).map((p) => {
+              const connected = p === "claude" ? profile.has_anthropic : profile.has_openai;
+              return (
+                <button key={p} onClick={() => { setProvider(p); setAiState(null); }}
+                  className={`p-3 border rounded text-left transition relative ${provider === p ? "border-brand bg-accent" : "border-border hover:border-muted-foreground"}`}>
+                  <div className="font-medium text-sm flex items-center gap-1.5">
+                    {p === "claude" ? "Claude" : "ChatGPT"}
+                    {connected && <Check className="h-3.5 w-3.5 text-success" />}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5">{p === "claude" ? "Anthropic" : "OpenAI"}</div>
+                </button>
+              );
+            })}
           </div>
           <label className="text-xs text-muted-foreground">
             {provider === "claude" ? "Anthropic API key" : "OpenAI API key"}
@@ -186,7 +210,9 @@ function SettingsPage() {
           <h2 className="text-lg font-semibold mb-1">GitHub</h2>
           <p className="text-sm text-muted-foreground mb-4">
             {profile.github_username
-              ? <>Connected as <span className="text-foreground font-medium">@{profile.github_username}</span></>
+              ? <>Connected as <span className="text-foreground font-medium">@{profile.github_username}</span>
+                  <span className="ml-2 inline-flex items-center gap-1 text-success text-xs"><Check className="h-3.5 w-3.5" /> Connected</span>
+                </>
               : "Not connected"}
           </p>
           <label className="text-xs text-muted-foreground">Personal Access Token</label>
