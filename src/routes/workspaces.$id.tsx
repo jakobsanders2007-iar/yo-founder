@@ -39,19 +39,23 @@ function WorkspacePage() {
     if (!loading && !user) navigate({ to: "/login" });
   }, [user, loading, navigate]);
 
+  const reloadWs = useCallback(async () => {
+    const { data: w } = await supabase.from("workspaces").select("*").eq("id", workspaceId).single();
+    if (!w) { navigate({ to: "/dashboard" }); return; }
+    setWs(w);
+  }, [workspaceId, navigate]);
+
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const { data: w } = await supabase.from("workspaces").select("*").eq("id", workspaceId).single();
-      if (!w) { navigate({ to: "/dashboard" }); return; }
-      setWs(w);
+      await reloadWs();
       const { data: m } = await supabase
         .from("workspace_members")
         .select("user_id, role, profiles(id, display_name, avatar_color, ai_provider, last_seen_at)")
         .eq("workspace_id", workspaceId);
       setMembers(m ?? []);
     })();
-  }, [workspaceId, user, navigate]);
+  }, [workspaceId, user, navigate, reloadWs]);
 
   // Presence heartbeat
   useEffect(() => {
