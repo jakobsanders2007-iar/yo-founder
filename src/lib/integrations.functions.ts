@@ -651,3 +651,156 @@ export const saveWorkspaceRepo = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+/* =====================================================
+   GITHUB (repo browsing via user's PAT in profiles)
+   ===================================================== */
+
+async function getUserGithubToken(supabase: any, userId: string, workspaceId: string): Promise<string> {
+  // Try requester first
+  const { data: me } = await supabase.from("profiles").select("github_token").eq("id", userId).single();
+  if (me?.github_token) return me.github_token;
+  // Fallback to workspace owner
+  const { data: ws } = await supabase.from("workspaces").select("created_by").eq("id", workspaceId).single();
+  if (ws?.created_by) {
+    const { data: own } = await supabase.from("profiles").select("github_token").eq("id", ws.created_by).single();
+    if (own?.github_token) return own.github_token;
+  }
+  throw new Error("No GitHub token configured. Set one in Settings.");
+}
+
+function ghHeaders(token: string) {
+  return {
+    Authorization: `Bearer ${token}`,
+    Accept: "application/vnd.github+json",
+    "User-Agent": "YoFounder",
+  };
+}
+
+async function ghFetch(token: string, path: string, init: RequestInit = {}) {
+  const res = await fetchWithTimeout(`https://api.github.com${path}`, {
+    ...init,
+    headers: { ...ghHeaders(token), ...(init.headers || {}) },
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`GitHub ${res.status}: ${txt.slice(0, 200)}`);
+  }
+  return res.json();
+}
+
+export const listGithubRepos = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({ workspaceId: z.string().uuid() }).parse(input)
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+    const token = await getUserGithubToken(supabase, userId, data.workspaceId);
+    const repos = await ghFetch(token, "/user/repos?sort=updated&per_page=50");
+    return {
+      repos: (Array.isArray(repos) ? repos : []).map((r: any) => ({
+        full_name: r.full_name,
+        private: r.private,
+        updated_at: r.updated_at,
+        description: r.description ?? null,
+      })),
+    };
+  });
+
+export const getGithubRepoInfo = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({ workspaceId: z.string().uuid() }).parse(input)
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+    const ws = await getWorkspace(supabase, data.workspaceId);
+    if (!ws.github_repo) throw new Error("No repo connected");
+    const token = await getUserGithubToken(supabase, userId, data.workspaceId);
+    const r = await ghFetch(token, `/repos/${ws.github_repo}`);
+    return {
+      full_name: r.full_name,
+      description: r.description,
+      private: r.private,
+      default_branch: r.default_branch,
+      html_url: r.html_url,
+      stargazers_count: r.stargazers_count,
+      forks_count: r.forks_count,
+      open_issues_count: r.open_issues_count,
+      updated_at: r.updated_at,
+    };
+  });
+
+export const getGithubPRs = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({ workspaceId: z.string().uuid() }).parse(input)
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+    const ws = await getWorkspace(supabase, data.workspaceId);
+    if (!ws.github_repo) throw new Error("No repo connected");
+    const token = await getUserGithubToken(supabase, userId, data.workspaceId);
+    const prs = await ghFetch(token, `/repos/${ws.github_repo}/pulls?state=open&per_page=20`);
+    return {
+      prs: (Array.isArray(prs) ? prs : []).map((p: any) => ({
+        number: p.number,
+        title: p.title,
+        author: p.user?.login ?? "unknown",
+        head: p.head?.ref ?? "",
+        base: p.base?.ref ?? "main",
+        html_url: p.html_url,
+        created_at: p.created_at,
+        changed_files: p.changed_files ?? null,
+      })),
+    };
+  });
+
+export const getGithubCommits = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({ workspaceId: z.string().uuid() }).parse(input)
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+    const ws = await getWorkspace(supabase, data.workspaceId);
+    if (!ws.github_repo) throw new Error("No repo connected");
+    const token = await getUserGithubToken(supabase, userId, data.workspaceId);
+    const commits = await ghFetch(token, `/repos/${ws.github_repo}/commits?per_page=10`);
+    return {
+      commits: (Array.isArray(commits) ? commits : []).map((c: any) => ({
+        sha: c.sha,
+        short_sha: c.sha?.slice(0, 7),
+        message: c.commit?.message?.split("\n")[0] ?? "",
+        author: c.commit?.author?.name ?? c.author?.login ?? "unknown",
+        date: c.commit?.author?.date,
+        html_url: c.html_url,
+      })),
+    };
+  });
+
+export const mergeGithubPR = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({
+      workspaceId: z.string().uuid(),
+      prNumber: z.number().int().min(1).max(1_000_000),
+    }).parse(input)
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+    const ws = await getWorkspace(supabase, data.workspaceId);
+    if (!ws.github_repo) throw new Error("No repo connected");
+    const token = await getUserGithubToken(supabase, userId, data.workspaceId);
+    const res = await fetchWithTimeout(
+      `https://api.github.com/repos/${ws.github_repo}/pulls/${data.prNumber}/merge`,
+      { method: "PUT", headers: ghHeaders(token), body: JSON.stringify({}) }
+    );
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      throw new Error(`GitHub ${res.status}: ${txt.slice(0, 200)}`);
+    }
+    const j = await res.json();
+    return { merged: !!j.merged, sha: j.sha ?? null };
+  });
