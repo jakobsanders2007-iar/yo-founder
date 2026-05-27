@@ -32,6 +32,9 @@ function SettingsPage() {
   const [showGh, setShowGh] = useState(false);
   const [ghBusy, setGhBusy] = useState(false);
   const [ghState, setGhState] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [workspaces, setWorkspaces] = useState<{ id: string; name: string; github_repo: string }[]>([]);
+  const [repoEdits, setRepoEdits] = useState<Record<string, string>>({});
+  const [repoBusy, setRepoBusy] = useState<string | null>(null);
 
   // Profile
   const [name, setName] = useState("");
