@@ -364,3 +364,21 @@ function timeAgo(iso: string | null | undefined): string {
   if (d < 30) return `${d}d ago`;
   return new Date(iso).toLocaleDateString();
 }
+
+export function SetupStep({
+  n, title, children, done, active,
+}: {
+  n: number; title: string; children: React.ReactNode; done?: boolean; active?: boolean;
+}) {
+  return (
+    <div className={`border rounded-lg p-5 transition ${done ? "border-success/40 bg-success/5" : active ? "border-brand bg-surface" : "border-border bg-surface opacity-70"}`}>
+      <div className="flex items-center gap-3 mb-3">
+        <div className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-semibold ${done ? "bg-success text-background" : "bg-brand text-primary-foreground"}`}>
+          {done ? <Check className="h-4 w-4" /> : n}
+        </div>
+        <h3 className="font-semibold text-sm">{title}</h3>
+      </div>
+      <div className="pl-10">{children}</div>
+    </div>
+  );
+}
