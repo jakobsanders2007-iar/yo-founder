@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/Card";
-import { ExternalLink, Eye, EyeOff, Check, RefreshCw, GitPullRequest, GitCommit, Star, GitFork, AlertCircle, Lock, Globe } from "lucide-react";
+import { ExternalLink, Eye, EyeOff, Check, RefreshCw, GitPullRequest, GitCommit, AlertCircle, ChevronDown, ChevronRight, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   saveWorkspaceRepo,
@@ -10,6 +10,7 @@ import {
   listGithubRepos,
   getGithubRepoInfo,
   getGithubPRs,
+  getGithubPRDetail,
   getGithubCommits,
   mergeGithubPR,
 } from "@/lib/integrations.functions";
