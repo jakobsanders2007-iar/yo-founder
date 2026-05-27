@@ -14,16 +14,304 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      messages: {
+        Row: {
+          ai_provider: Database["public"]["Enums"]["ai_provider"] | null
+          content: string
+          created_at: string
+          id: string
+          is_error: boolean
+          sender_type: Database["public"]["Enums"]["sender_type"]
+          sender_user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          ai_provider?: Database["public"]["Enums"]["ai_provider"] | null
+          content: string
+          created_at?: string
+          id?: string
+          is_error?: boolean
+          sender_type: Database["public"]["Enums"]["sender_type"]
+          sender_user_id: string
+          workspace_id: string
+        }
+        Update: {
+          ai_provider?: Database["public"]["Enums"]["ai_provider"] | null
+          content?: string
+          created_at?: string
+          id?: string
+          is_error?: boolean
+          sender_type?: Database["public"]["Enums"]["sender_type"]
+          sender_user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_sender_user_id_fkey"
+            columns: ["sender_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          ai_provider: Database["public"]["Enums"]["ai_provider"] | null
+          anthropic_key: string | null
+          avatar_color: string
+          created_at: string
+          display_name: string
+          github_token: string | null
+          github_username: string | null
+          id: string
+          last_seen_at: string
+          onboarded: boolean
+          openai_key: string | null
+        }
+        Insert: {
+          ai_provider?: Database["public"]["Enums"]["ai_provider"] | null
+          anthropic_key?: string | null
+          avatar_color?: string
+          created_at?: string
+          display_name?: string
+          github_token?: string | null
+          github_username?: string | null
+          id: string
+          last_seen_at?: string
+          onboarded?: boolean
+          openai_key?: string | null
+        }
+        Update: {
+          ai_provider?: Database["public"]["Enums"]["ai_provider"] | null
+          anthropic_key?: string | null
+          avatar_color?: string
+          created_at?: string
+          display_name?: string
+          github_token?: string | null
+          github_username?: string | null
+          id?: string
+          last_seen_at?: string
+          onboarded?: boolean
+          openai_key?: string | null
+        }
+        Relationships: []
+      }
+      prompts: {
+        Row: {
+          content: string
+          created_at: string
+          created_by: string
+          github_issue_number: number | null
+          github_issue_url: string | null
+          id: string
+          status: Database["public"]["Enums"]["prompt_status"]
+          title: string
+          workspace_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          created_by: string
+          github_issue_number?: number | null
+          github_issue_url?: string | null
+          id?: string
+          status?: Database["public"]["Enums"]["prompt_status"]
+          title: string
+          workspace_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          created_by?: string
+          github_issue_number?: number | null
+          github_issue_url?: string | null
+          id?: string
+          status?: Database["public"]["Enums"]["prompt_status"]
+          title?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prompts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prompts_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workspace_invites: {
+        Row: {
+          accepted: boolean
+          created_at: string
+          email: string
+          id: string
+          invited_by: string
+          token: string
+          workspace_id: string
+        }
+        Insert: {
+          accepted?: boolean
+          created_at?: string
+          email: string
+          id?: string
+          invited_by: string
+          token?: string
+          workspace_id: string
+        }
+        Update: {
+          accepted?: boolean
+          created_at?: string
+          email?: string
+          id?: string
+          invited_by?: string
+          token?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_invites_invited_by_fkey"
+            columns: ["invited_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workspace_invites_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workspace_members: {
+        Row: {
+          id: string
+          joined_at: string
+          role: Database["public"]["Enums"]["member_role"]
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          id?: string
+          joined_at?: string
+          role?: Database["public"]["Enums"]["member_role"]
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          id?: string
+          joined_at?: string
+          role?: Database["public"]["Enums"]["member_role"]
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workspace_members_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workspaces: {
+        Row: {
+          created_at: string
+          created_by: string
+          dns_checklist: Json
+          dns_notes: string | null
+          github_branch: string
+          github_repo: string
+          godaddy_domain: string | null
+          id: string
+          name: string
+          supabase_project_url: string | null
+          vercel_project_url: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          dns_checklist?: Json
+          dns_notes?: string | null
+          github_branch?: string
+          github_repo: string
+          godaddy_domain?: string | null
+          id?: string
+          name: string
+          supabase_project_url?: string | null
+          vercel_project_url?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          dns_checklist?: Json
+          dns_notes?: string | null
+          github_branch?: string
+          github_repo?: string
+          godaddy_domain?: string | null
+          id?: string
+          name?: string
+          supabase_project_url?: string | null
+          vercel_project_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspaces_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      is_workspace_member: {
+        Args: { _user_id: string; _workspace_id: string }
+        Returns: boolean
+      }
+      is_workspace_owner: {
+        Args: { _user_id: string; _workspace_id: string }
+        Returns: boolean
+      }
+      shares_workspace_with: {
+        Args: { _user_a: string; _user_b: string }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      ai_provider: "claude" | "gpt"
+      member_role: "owner" | "cofounder"
+      prompt_status: "draft" | "sent"
+      sender_type: "human" | "ai"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +438,11 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      ai_provider: ["claude", "gpt"],
+      member_role: ["owner", "cofounder"],
+      prompt_status: ["draft", "sent"],
+      sender_type: ["human", "ai"],
+    },
   },
 } as const
