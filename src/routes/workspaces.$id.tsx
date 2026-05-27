@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, useParams, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
@@ -7,20 +7,24 @@ import { Logo } from "@/components/Logo";
 import { Avatar } from "@/components/UserAvatar";
 import {
   respondAsSenderAi, respondAsCofounderAi, generatePrompt,
-  createGithubIssue, checkDeploymentStatus,
+  createGithubIssue,
 } from "@/lib/yofounder.functions";
 import { toast } from "sonner";
 import {
   Github, Send, Sparkles, Copy, ExternalLink, ArrowLeft, X, Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { GithubTab } from "@/components/tabs/GithubTab";
+import { VercelTab } from "@/components/tabs/VercelTab";
+import { SupabaseTab } from "@/components/tabs/SupabaseTab";
+import { DomainTab } from "@/components/tabs/DomainTab";
 
 export const Route = createFileRoute("/workspaces/$id")({
   component: WorkspacePage,
   head: () => ({ meta: [{ title: "Workspace — YoFounder" }] }),
 });
 
-type Tab = "chat" | "prompts" | "vercel" | "supabase" | "domain";
+type Tab = "chat" | "prompts" | "github" | "vercel" | "supabase" | "domain";
 
 function WorkspacePage() {
   const { id: workspaceId } = useParams({ from: "/workspaces/$id" });
