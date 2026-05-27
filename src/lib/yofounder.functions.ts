@@ -171,7 +171,7 @@ async function respondForUser(opts: {
   const history = await fetchHistory(supabase, workspaceId);
   const formatted = buildHistoryForProvider(history, forUserId);
 
-  const system = `You are ${profile.display_name}'s AI co-founder assistant in a group chat. You are helping two founders decide what to build together. Be concise, opinionated, and technical. Max 3 sentences.`;
+  const system = `You are ${profile.display_name}'s AI assistant. You are in a shared workspace with their co-founder. Help with coding questions, product decisions, technical problems, and anything else they need. Be conversational, concise, and genuinely helpful. Max 3 sentences unless more detail is needed.`;
 
   let text: string;
   try {
