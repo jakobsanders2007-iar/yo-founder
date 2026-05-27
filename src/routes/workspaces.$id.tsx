@@ -108,9 +108,9 @@ function WorkspacePage() {
       <main className="flex-1 flex flex-col min-h-0">
         {tab === "chat" && <ChatTab workspaceId={workspaceId} user={user} members={members} />}
         {tab === "prompts" && <PromptsTab workspaceId={workspaceId} user={user} onNewPrompt={() => setPromptDot(true)} />}
-        {tab === "vercel" && <VercelTab ws={ws} />}
-        {tab === "supabase" && <SupabaseTab ws={ws} />}
-        {tab === "domain" && <DomainTab ws={ws} />}
+        {tab === "vercel" && <VercelTab ws={ws} onWsUpdate={reloadWs} />}
+        {tab === "supabase" && <SupabaseTab ws={ws} onWsUpdate={reloadWs} />}
+        {tab === "domain" && <DomainTab ws={ws} onWsUpdate={reloadWs} />}
       </main>
     </div>
   );
