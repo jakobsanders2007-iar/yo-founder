@@ -245,39 +245,63 @@ export type Database = {
           created_by: string
           dns_checklist: Json
           dns_notes: string | null
+          domain_last_checked_at: string | null
+          domain_last_status: number | null
           github_branch: string
           github_repo: string
           godaddy_domain: string | null
           id: string
           name: string
+          setup_progress: Json
           supabase_project_url: string | null
+          supabase_service_key: string | null
+          supabase_url: string | null
+          vercel_project_id: string | null
+          vercel_project_name: string | null
           vercel_project_url: string | null
+          vercel_token: string | null
         }
         Insert: {
           created_at?: string
           created_by: string
           dns_checklist?: Json
           dns_notes?: string | null
+          domain_last_checked_at?: string | null
+          domain_last_status?: number | null
           github_branch?: string
           github_repo: string
           godaddy_domain?: string | null
           id?: string
           name: string
+          setup_progress?: Json
           supabase_project_url?: string | null
+          supabase_service_key?: string | null
+          supabase_url?: string | null
+          vercel_project_id?: string | null
+          vercel_project_name?: string | null
           vercel_project_url?: string | null
+          vercel_token?: string | null
         }
         Update: {
           created_at?: string
           created_by?: string
           dns_checklist?: Json
           dns_notes?: string | null
+          domain_last_checked_at?: string | null
+          domain_last_status?: number | null
           github_branch?: string
           github_repo?: string
           godaddy_domain?: string | null
           id?: string
           name?: string
+          setup_progress?: Json
           supabase_project_url?: string | null
+          supabase_service_key?: string | null
+          supabase_url?: string | null
+          vercel_project_id?: string | null
+          vercel_project_name?: string | null
           vercel_project_url?: string | null
+          vercel_token?: string | null
         }
         Relationships: [
           {
