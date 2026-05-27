@@ -214,7 +214,38 @@ function SettingsPage() {
             {ghState?.ok && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {ghState.msg}</span>}
             {ghState && !ghState.ok && <span className="text-error text-sm flex items-center gap-1"><X className="h-4 w-4" /> {ghState.msg}</span>}
           </div>
+
+          <div className="mt-6 pt-6 border-t border-border">
+            <h3 className="text-sm font-semibold mb-1">Workspace repositories</h3>
+            <p className="text-xs text-muted-foreground mb-3">One GitHub repo per workspace, in <code>owner/repo</code> format.</p>
+            {workspaces.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No workspaces yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {workspaces.map((w) => (
+                  <div key={w.id}>
+                    <label className="text-xs text-muted-foreground">{w.name}</label>
+                    <div className="mt-1 flex gap-2">
+                      <input
+                        value={repoEdits[w.id] ?? ""}
+                        onChange={(e) => setRepoEdits((r) => ({ ...r, [w.id]: e.target.value }))}
+                        placeholder="owner/repo"
+                        className="flex-1 bg-background border border-border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand"
+                      />
+                      <button
+                        onClick={() => handleRepoSave(w.id)}
+                        disabled={repoBusy === w.id || (repoEdits[w.id] ?? "").trim() === (w.github_repo ?? "")}
+                        className="bg-brand text-primary-foreground font-medium px-3 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50">
+                        {repoBusy === w.id ? "..." : "Save"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </section>
+
 
         {/* Profile */}
         <section className="bg-surface border border-border rounded-lg p-6">
