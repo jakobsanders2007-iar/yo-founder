@@ -214,7 +214,11 @@ function ChatTab({ workspaceId, user, members }: any) {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="flex-1 flex flex-col min-h-0 relative">
+      <button onClick={generate} disabled={generating}
+        className="absolute top-2 right-3 z-10 inline-flex items-center gap-1.5 border border-border bg-surface text-foreground/80 hover:text-foreground text-[11px] px-2.5 py-1.5 rounded hover:border-foreground disabled:opacity-50">
+        <Sparkles className="h-3 w-3" /> {generating ? "Generating..." : "Generate Claude Code Prompt"}
+      </button>
       <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin px-4 md:px-6 py-6 space-y-4">
         {messages.map((m) => {
           const sender = membersById[m.sender_user_id];
@@ -261,11 +265,7 @@ function ChatTab({ workspaceId, user, members }: any) {
         )}
       </div>
 
-      <div className="border-t border-border bg-surface relative">
-        <button onClick={generate} disabled={generating}
-          className="absolute -top-12 right-4 inline-flex items-center gap-1.5 bg-brand text-primary-foreground text-xs font-medium px-3 py-2 rounded shadow-lg hover:opacity-90 disabled:opacity-50">
-          <Sparkles className="h-3.5 w-3.5" /> {generating ? "Generating..." : "Generate Claude Code Prompt"}
-        </button>
+      <div className="border-t border-border bg-surface">
         <div className="px-4 md:px-6 py-3 flex gap-2 items-end">
           <textarea
             value={text} onChange={(e) => setText(e.target.value.slice(0, 1000))}
