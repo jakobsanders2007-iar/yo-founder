@@ -268,12 +268,15 @@ export const generatePrompt = createServerFn({ method: "POST" })
       return `${label}: ${m.content}`;
     }).join("\n\n");
 
-    const system = `You are a technical co-founder assistant. Based on this conversation between two founders and their AIs, generate a clear, detailed prompt that can be pasted directly into Claude Code or Cursor to implement the change being discussed.
+    const system = `You are a technical co-founder assistant. Based on this conversation, generate a Claude Code prompt that can be pasted directly into Claude Code CLI to implement the discussed changes.
 
 Format your response as JSON:
-{ "title": "short title", "content": "full implementation prompt with context, files to change, and specific instructions" }
+{
+  "title": "short descriptive title (max 60 chars)",
+  "content": "## Context\\n[what was discussed and why this change is needed]\\n\\n## Task\\n[specific implementation instructions]\\n\\n## Files to Check\\n[any specific files mentioned, or 'Explore the codebase to find relevant files']\\n\\n## Success Criteria\\n[what the implementation should achieve]"
+}
 
-Return ONLY the JSON, no other text.`;
+Return ONLY the JSON, no markdown fences, no explanation.`;
 
     const userMsg: ChatMsg = { role: "user", content: `Conversation:\n\n${conversation}` };
 
