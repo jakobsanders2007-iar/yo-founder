@@ -369,10 +369,10 @@ export const saveAiKey = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context as any;
-    const update: any = { ai_provider: data.provider };
-    if (data.provider === "claude") update.anthropic_key = data.apiKey;
-    else update.openai_key = data.apiKey;
-    const { error } = await supabase.from("profiles").update(update).eq("id", userId);
+    const payload: any = { id: userId, ai_provider: data.provider };
+    if (data.provider === "claude") payload.anthropic_key = data.apiKey;
+    else payload.openai_key = data.apiKey;
+    const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "id" });
     if (error) throw new Error(error.message);
     return { ok: true };
   });
@@ -385,8 +385,10 @@ export const saveGithubToken = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context as any;
     const { error } = await supabase.from("profiles")
-      .update({ github_token: data.token, github_username: data.login, onboarded: true })
-      .eq("id", userId);
+      .upsert(
+        { id: userId, github_token: data.token, github_username: data.login, onboarded: true },
+        { onConflict: "id" }
+      );
     if (error) throw new Error(error.message);
     return { ok: true };
   });
