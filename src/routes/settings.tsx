@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { Logo } from "@/components/Logo";
-import { testAiKey, saveAiKey, testGithubToken, saveGithubToken } from "@/lib/yofounder.functions";
+import { saveAiKey, saveGithubToken } from "@/lib/yofounder.functions";
 import { toast } from "sonner";
 import { ArrowLeft, Check, Eye, EyeOff, X, Github } from "lucide-react";
 
@@ -36,9 +36,7 @@ function SettingsPage() {
   const [showGh, setShowGh] = useState(false);
   const [ghState, setGhState] = useState<{ ok: boolean; msg: string } | null>(null);
 
-  const testAi = useServerFn(testAiKey);
   const saveAi = useServerFn(saveAiKey);
-  const testGh = useServerFn(testGithubToken);
   const saveGh = useServerFn(saveGithubToken);
 
   useEffect(() => {
@@ -103,18 +101,9 @@ function SettingsPage() {
         has_gemini: provider === "gemini" ? true : p?.has_gemini,
       }));
 
-      if (provider !== "gemini" && aiKey.trim()) {
-        const t = await testAi({ data: { provider, apiKey: aiKey.trim() } }).catch(() => ({ success: false as const }));
-        if (!t.success) {
-          setAiState({ ok: true, msg: "Saved ✓ — but the test call failed. Double-check the key works." });
-          if (!silent) toast.success("Key saved (test failed — verify it)");
-          return { ok: true as const, saved: true as const };
-        }
-      }
-
       setAiKey("");
-      setAiState({ ok: true, msg: "Saved ✓" });
-      if (!silent) toast.success("AI saved ✓");
+      setAiState({ ok: true, msg: "Saved and hidden ✓" });
+      if (!silent) toast.success("AI key saved");
       return { ok: true as const, saved: true as const };
     } catch (e: any) {
       setAiState({ ok: false, msg: e?.message ?? "Couldn't save — please try again" });
@@ -132,18 +121,11 @@ function SettingsPage() {
     setGhBusy(true);
     setGhState(null);
     try {
-      const t = await testGh({ data: { token: ghToken.trim() } });
-      if (!t.success) {
-        setGhState({ ok: false, msg: "That token didn't work — check it has `repo` + `read:user` scopes" });
-        if (!silent) toast.error("GitHub token didn't work");
-        return { ok: false as const, saved: true as const };
-      }
-
-      await saveGh({ data: { token: ghToken.trim(), login: t.login } });
-      setGhState({ ok: true, msg: `Connected as @${t.login} ✓` });
-      setProfile((p: any) => ({ ...p, github_username: t.login, has_github: true }));
+      await saveGh({ data: { token: ghToken.trim() } });
+      setGhState({ ok: true, msg: "Saved and hidden ✓" });
+      setProfile((p: any) => ({ ...p, has_github: true }));
       setGhToken("");
-      if (!silent) toast.success(`GitHub connected as @${t.login}`);
+      if (!silent) toast.success("GitHub key saved");
       return { ok: true as const, saved: true as const };
     } catch (e: any) {
       setGhState({ ok: false, msg: e?.message ?? "Couldn't save — please try again" });
@@ -208,18 +190,6 @@ function SettingsPage() {
     toast.success("All settings saved ✓");
   };
 
-  const handleAiSaveClick = () => {
-    void persistAiSettings();
-  };
-
-  const handleGithubSaveClick = () => {
-    void saveGithubFromToken();
-  };
-
-  const handleProfileSaveClick = () => {
-    void handleProfileSave();
-  };
-
   if (!profile) return <div className="min-h-screen bg-background flex items-center justify-center text-sm text-muted-foreground">Loading...</div>;
 
   return (
@@ -248,16 +218,22 @@ function SettingsPage() {
         {/* GitHub */}
         <section className="bg-surface border border-border rounded-lg p-6">
           <h2 className="text-lg font-semibold mb-4 inline-flex items-center gap-2"><Github className="h-5 w-5" /> GitHub</h2>
-          {profile.has_github && profile.github_username ? (
+          {profile.has_github ? (
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-3">
-                <img
-                  src={`https://github.com/${profile.github_username}.png?size=80`}
-                  alt={profile.github_username}
-                  className="h-10 w-10 rounded-full border border-border"
-                />
+                {profile.github_username ? (
+                  <img
+                    src={`https://github.com/${profile.github_username}.png?size=80`}
+                    alt={profile.github_username}
+                    className="h-10 w-10 rounded-full border border-border"
+                  />
+                ) : (
+                  <div className="h-10 w-10 rounded-full border border-border bg-background flex items-center justify-center">
+                    <Github className="h-5 w-5" />
+                  </div>
+                )}
                 <div>
-                  <div className="font-medium">@{profile.github_username}</div>
+                  <div className="font-medium">{profile.github_username ? `@${profile.github_username}` : "GitHub key stored"}</div>
                   <div className="text-xs text-success inline-flex items-center gap-1"><Check className="h-3 w-3" /> Connected</div>
                 </div>
               </div>
@@ -288,14 +264,7 @@ function SettingsPage() {
                 </button>
               </div>
               <div className="mt-3 flex items-center gap-3">
-                <button
-                  onClick={handleGithubSaveClick}
-                  disabled={ghBusy || !ghToken.trim()}
-                  className="bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50 inline-flex items-center gap-2"
-                >
-                  <Github className="h-4 w-4" />
-                  {ghBusy ? "Saving..." : "Save"}
-                </button>
+                <span className="text-xs text-muted-foreground">Stored only when you use the final save button below.</span>
                 {ghState?.ok && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {ghState.msg}</span>}
                 {ghState && !ghState.ok && <span className="text-error text-sm flex items-center gap-1"><X className="h-4 w-4" /> {ghState.msg}</span>}
               </div>
@@ -346,10 +315,7 @@ function SettingsPage() {
                 Admin note: add <code className="font-mono">GEMINI_API_KEY</code> to your Supabase edge function secrets to enable Gemini for users.
               </p>
               <div className="mt-3 flex items-center gap-3">
-                <button onClick={handleAiSaveClick} disabled={aiBusy}
-                  className="bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50">
-                  {aiBusy ? "Saving..." : "Use Gemini"}
-                </button>
+                <span className="text-xs text-muted-foreground">Your selection is stored when you use the final save button below.</span>
                 {aiState?.ok && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {aiState.msg}</span>}
                 {aiState && !aiState.ok && <span className="text-error text-sm flex items-center gap-1"><X className="h-4 w-4" /> {aiState.msg}</span>}
               </div>
@@ -373,10 +339,7 @@ function SettingsPage() {
                 </button>
               </div>
               <div className="mt-3 flex items-center gap-3">
-                <button onClick={handleAiSaveClick} disabled={aiBusy || !aiKey.trim()}
-                  className="bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50">
-                  {aiBusy ? "Saving..." : "Save"}
-                </button>
+                <span className="text-xs text-muted-foreground">Your key will be stored securely and hidden when you use the final save button below.</span>
                 {aiState?.ok && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {aiState.msg}</span>}
                 {aiState && !aiState.ok && <span className="text-error text-sm flex items-center gap-1"><X className="h-4 w-4" /> {aiState.msg}</span>}
               </div>
@@ -403,10 +366,7 @@ function SettingsPage() {
               />
             ))}
           </div>
-          <button onClick={handleProfileSaveClick} disabled={profBusy}
-            className="mt-6 bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50">
-            {profBusy ? "Saving..." : "Save"}
-          </button>
+          <p className="mt-6 text-xs text-muted-foreground">Profile changes are stored when you use the final save button below.</p>
         </section>
 
         <div className="sticky bottom-4 z-10 flex justify-end">

@@ -4,9 +4,9 @@ import { useServerFn } from "@tanstack/react-start";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { Logo } from "@/components/Logo";
-import { testAiKey, saveAiKey } from "@/lib/yofounder.functions";
+import { saveAiKey } from "@/lib/yofounder.functions";
 import { toast } from "sonner";
-import { Check, X, Github } from "lucide-react";
+import { Check, Github } from "lucide-react";
 
 const COLORS = ["#6366f1","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#f97316","#ec4899"];
 
@@ -23,13 +23,10 @@ function OnboardingPage() {
   const [color, setColor] = useState(COLORS[0]);
   const [provider, setProvider] = useState<"claude" | "gpt" | "gemini">("claude");
   const [aiKey, setAiKey] = useState("");
-  const [aiOk, setAiOk] = useState<null | boolean>(null);
-  const [aiErr, setAiErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [ghUsername, setGhUsername] = useState<string | null>(null);
   const [ghBusy, setGhBusy] = useState(false);
 
-  const testAi = useServerFn(testAiKey);
   const saveAi = useServerFn(saveAiKey);
 
   useEffect(() => {
@@ -71,20 +68,13 @@ function OnboardingPage() {
     setStep(2);
   };
 
-  const testAiBtn = async () => {
-    if (!aiKey.trim()) return;
-    setBusy(true); setAiErr(null); setAiOk(null);
-    const r = await testAi({ data: { provider, apiKey: aiKey.trim() } });
-    setBusy(false);
-    if (r.success) setAiOk(true);
-    else { setAiOk(false); setAiErr("That key didn't work — double-check and try again"); }
-  };
-
   const finishStep2 = async () => {
-    if (provider !== "gemini" && !aiOk) return toast.error("Please test your key first");
+    if (provider !== "gemini" && !aiKey.trim()) return toast.error("Please add your key");
     setBusy(true);
-    await saveAi({ data: { provider, apiKey: provider === "gemini" ? "" : aiKey.trim() } });
+    const result = await saveAi({ data: { provider, apiKey: provider === "gemini" ? "" : aiKey.trim() } }).catch(() => null);
     setBusy(false);
+    if (!result?.ok) return toast.error("Couldn't save your AI key — please try again");
+    setAiKey("");
     setStep(3);
   };
 
@@ -157,7 +147,7 @@ function OnboardingPage() {
                     : p === "gpt" ? "Great for writing and creativity"
                     : "Free — no key needed ✓";
                   return (
-                    <button key={p} onClick={() => { setProvider(p); setAiOk(null); setAiErr(null); }}
+                    <button key={p} onClick={() => { setProvider(p); }}
                       className={`p-4 border rounded text-left transition ${provider === p ? "bg-accent" : "border-border hover:border-muted-foreground"}`}
                       style={provider === p ? { borderColor: accent } : undefined}>
                       <div className="font-medium flex items-center gap-1.5">
@@ -189,21 +179,16 @@ function OnboardingPage() {
                   </label>
                   <input
                     type="password" value={aiKey}
-                    onChange={(e) => { setAiKey(e.target.value); setAiOk(null); setAiErr(null); }}
+                    onChange={(e) => { setAiKey(e.target.value); }}
                     className="mt-1 w-full bg-background border border-border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand"
                     placeholder={provider === "claude" ? "sk-ant-..." : "sk-..."}
                   />
-                  <div className="mt-3 flex items-center gap-3">
-                    <button onClick={testAiBtn} disabled={busy || !aiKey.trim()}
-                      className="px-4 py-2 border border-border rounded text-sm hover:border-foreground disabled:opacity-50">
-                      Test key
-                    </button>
-                    {aiOk === true && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> Working</span>}
-                    {aiOk === false && <span className="text-error text-sm flex items-center gap-1"><X className="h-4 w-4" /> {aiErr}</span>}
-                  </div>
-                  <button onClick={finishStep2} disabled={busy || !aiOk}
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Your key will be saved securely and hidden after you continue.
+                  </p>
+                  <button onClick={finishStep2} disabled={busy || !aiKey.trim()}
                     className="mt-8 w-full bg-brand text-primary-foreground font-medium py-2.5 rounded text-sm hover:opacity-90 disabled:opacity-50">
-                    Continue
+                    Save and continue
                   </button>
                 </>
               )}
