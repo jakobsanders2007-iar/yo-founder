@@ -834,3 +834,111 @@ export const mergeGithubPR = createServerFn({ method: "POST" })
     const j = await res.json();
     return { merged: !!j.merged, sha: j.sha ?? null };
   });
+
+/* =====================================================
+   CLAUDE CODE (Railway)
+   ===================================================== */
+
+const RAILWAY_URL = "https://yo-founder-production.up.railway.app";
+const RAILWAY_SECRET = "yofounder2024";
+
+export const runClaudeCode = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({
+      workspaceId: z.string().uuid(),
+      promptId: z.string().uuid(),
+    }).parse(input)
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+
+    // Workspace + repo
+    const ws = await getWorkspace(supabase, data.workspaceId);
+    if (!ws.github_repo) throw new Error("No GitHub repo connected to this workspace");
+
+    // Rate limit: one active job per workspace
+    const { data: active } = await supabase
+      .from("claude_code_jobs")
+      .select("id, status")
+      .eq("workspace_id", data.workspaceId)
+      .in("status", ["queued", "cloning", "coding", "committing"])
+      .limit(1);
+    if ((active ?? []).length > 0) {
+      throw new Error("Claude Code is already running for this workspace");
+    }
+
+    // Prompt
+    const { data: prompt, error: pErr } = await supabase
+      .from("prompts").select("id, title, content").eq("id", data.promptId).single();
+    if (pErr || !prompt) throw new Error("Prompt not found");
+
+    // GitHub token: prefer current user, fallback to workspace owner
+    const { data: meProf } = await supabase
+      .from("profiles").select("github_token").eq("id", userId).single();
+    let token: string | null = meProf?.github_token ?? null;
+    if (!token) {
+      const { data: owners } = await supabase
+        .from("workspace_members")
+        .select("user_id, profiles:user_id(github_token)")
+        .eq("workspace_id", data.workspaceId)
+        .eq("role", "owner");
+      for (const o of owners ?? []) {
+        const t = (o as any).profiles?.github_token;
+        if (t) { token = t; break; }
+      }
+    }
+    if (!token) throw new Error("No GitHub token available. Connect GitHub in settings.");
+
+    // Branch name
+    const slug = (prompt.title || "change").toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "change";
+    const branch = `yofounder/${slug}-${Date.now()}`;
+    const baseBranch = ws.github_branch || "main";
+
+    // Create job row
+    const { data: job, error: jErr } = await supabase
+      .from("claude_code_jobs")
+      .insert({
+        workspace_id: data.workspaceId,
+        proposal_id: prompt.id,
+        triggered_by: userId,
+        status: "queued",
+        branch_name: branch,
+      })
+      .select()
+      .single();
+    if (jErr || !job) throw new Error(jErr?.message ?? "Failed to create job");
+
+    // Fire Railway
+    try {
+      const res = await fetchWithTimeout(`${RAILWAY_URL}/run-claude-code`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          Authorization: `Bearer ${RAILWAY_SECRET}`,
+        },
+        body: JSON.stringify({
+          job_id: job.id,
+          repo: ws.github_repo,
+          branch,
+          base_branch: baseBranch,
+          prompt: prompt.content,
+          github_token: token,
+        }),
+      }, 30_000);
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        const errMsg = `Railway error ${res.status}: ${text.slice(0, 300)}`;
+        await supabase.from("claude_code_jobs").update({ status: "failed", error: errMsg }).eq("id", job.id);
+        throw new Error(errMsg);
+      }
+    } catch (e: any) {
+      await supabase.from("claude_code_jobs").update({
+        status: "failed",
+        error: e?.message ?? "Failed to reach Claude Code server",
+      }).eq("id", job.id);
+      throw e;
+    }
+
+    return { jobId: job.id as string, branch };
+  });
