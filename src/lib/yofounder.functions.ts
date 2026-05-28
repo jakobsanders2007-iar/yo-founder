@@ -299,10 +299,10 @@ export const generatePrompt = createServerFn({ method: "POST" })
 
     let sel = keyForProvider(me ?? {});
     if (!sel) {
-      // any provider key on profile
+      // any provider key on profile, or gemini server key
       if (me?.anthropic_key) sel = { provider: "claude", key: me.anthropic_key };
       else if (me?.openai_key) sel = { provider: "gpt", key: me.openai_key };
-      else if (me?.gemini_key) sel = { provider: "gemini", key: me.gemini_key };
+      else if (process.env.GEMINI_API_KEY) sel = { provider: "gemini", key: process.env.GEMINI_API_KEY };
     }
     if (!sel) throw new Error("No AI key available to generate a prompt");
 
