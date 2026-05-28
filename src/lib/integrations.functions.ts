@@ -132,8 +132,8 @@ export const listVercelProjects = createServerFn({ method: "POST" })
     const { supabase } = context as any;
     let token = data.token;
     if (!token && data.workspaceId) {
-      const ws = await getWorkspace(supabase, data.workspaceId);
-      token = ws.vercel_token;
+      const s = await getWorkspaceSecrets(supabase, data.workspaceId);
+      token = s.vercel_token ?? undefined;
     }
     if (!token) throw new Error("No Vercel token");
     const j = await vercelGet(token, "/v9/projects?limit=100");
