@@ -1,396 +1,125 @@
-import { useEffect, useMemo, useState } from "react";
-import { useServerFn } from "@tanstack/react-start";
-import { Card } from "@/components/Card";
-import { SetupStep } from "@/components/tabs/GithubTab";
-import { ExternalLink, Eye, EyeOff, Check, RefreshCw, Trash2, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
+import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { ExternalLink, Check, Database } from "lucide-react";
 import { toast } from "sonner";
-import {
-  testSupabaseConnection, saveSupabaseConnection, getSupabaseReport,
-  getSupabaseTableData, runSupabaseQuery, getSupabaseAuthLogs,
-  deleteSupabaseRow, insertSupabaseRow, updateSetupProgress,
-} from "@/lib/integrations.functions";
-
-const EXEC_SQL_SETUP = `-- Run this once in your Supabase SQL editor
-create or replace function public.exec_sql(query text)
-returns jsonb
-language plpgsql
-security definer
-as $$
-declare result jsonb;
-begin
-  execute 'select coalesce(jsonb_agg(t), ''[]''::jsonb) from (' || query || ') t' into result;
-  return result;
-exception when others then
-  return jsonb_build_object('error', SQLERRM);
-end;
-$$;
-revoke all on function public.exec_sql(text) from public, anon, authenticated;`;
 
 export function SupabaseTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void }) {
-  const connected = !!ws.supabase_url && !!ws.supabase_service_key;
-  if (!connected) return <SupabaseSetup ws={ws} onWsUpdate={onWsUpdate} />;
-  return <SupabaseDashboard ws={ws} />;
-}
+  const [url, setUrl] = useState(ws.supabase_project_url ?? "");
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-function SupabaseSetup({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void }) {
-  const test = useServerFn(testSupabaseConnection);
-  const save = useServerFn(saveSupabaseConnection);
-  const updateProg = useServerFn(updateSetupProgress);
-
-  const step: number = ws.setup_progress?.supabase ?? 0;
-  const setStep = async (n: number) => {
-    await updateProg({ data: { workspaceId: ws.id, key: "supabase", step: n } });
+  const save = async () => {
+    const v = url.trim();
+    if (!v) return;
+    if (!/^https?:\/\//.test(v)) return toast.error("Please paste a full URL starting with https://");
+    setBusy(true);
+    const { error } = await supabase.from("workspaces")
+      .update({ supabase_project_url: v })
+      .eq("id", ws.id);
+    setBusy(false);
+    if (error) return toast.error("Couldn't save — please try again");
+    toast.success("Your data storage is saved ✓");
+    setEditing(false);
     onWsUpdate();
   };
 
-  const [url, setUrl] = useState("");
-  const [key, setKey] = useState("");
-  const [showKey, setShowKey] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  const connect = async () => {
-    setBusy(true);
-    try {
-      const r = await test({ data: { url: url.trim(), serviceKey: key.trim() } });
-      if (!r.success) throw new Error(r.error);
-      await save({ data: { workspaceId: ws.id, url: url.trim(), serviceKey: key.trim() } });
-      toast.success("Connected");
-      await setStep(3);
-    } catch (e: any) {
-      toast.error(e?.message ?? "Failed");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="p-6 max-w-3xl space-y-6">
-      <div>
-        <h2 className="text-xl font-semibold">Your data storage</h2>
-        <p className="text-sm text-muted-foreground mt-1">This is where your app remembers everything — your users, their info, all of it.</p>
-      </div>
-
-      <SetupStep n={1} title="Create a Supabase account" done={step >= 1} active={step === 0}>
-        <div className="flex gap-2">
-          <a href="https://supabase.com" target="_blank" rel="noreferrer" onClick={() => setStep(1)}
-            className="bg-brand text-primary-foreground px-4 py-2 rounded text-sm font-medium hover:opacity-90 inline-flex items-center gap-1.5">
-            Create Supabase Account <ExternalLink className="h-3.5 w-3.5" />
+  // ───────── Connected ─────────
+  if (ws.supabase_project_url && !editing) {
+    return (
+      <div className="p-6 max-w-3xl space-y-6">
+        <div className="bg-surface border border-border rounded-lg p-6">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="inline-flex items-center gap-1.5 text-xs text-success">
+              <Check className="h-3.5 w-3.5" /> Data storage connected
+            </span>
+          </div>
+          <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Your data storage</div>
+          <a
+            href={ws.supabase_project_url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-lg font-mono text-brand hover:underline inline-flex items-center gap-2 break-all"
+          >
+            {ws.supabase_project_url.replace(/^https?:\/\//, "")}
+            <ExternalLink className="h-4 w-4 shrink-0" />
           </a>
-          <button onClick={() => setStep(1)} className="px-4 py-2 border border-border rounded text-sm hover:border-foreground">
-            I already have one
-          </button>
-        </div>
-      </SetupStep>
-
-      <SetupStep n={2} title="Create a new project" done={step >= 2} active={step === 1}>
-        <ol className="text-sm space-y-2 mb-4 pl-5 list-decimal text-muted-foreground">
-          <li>Click <span className="font-mono text-foreground">New Project</span> in your Supabase dashboard</li>
-          <li>Give it a name and set a strong database password</li>
-          <li>Choose the free tier region closest to you</li>
-          <li>Wait ~2 minutes for it to provision</li>
-        </ol>
-        <button onClick={() => setStep(2)} className="px-4 py-2 border border-border rounded text-sm hover:border-foreground">
-          My project is ready
-        </button>
-      </SetupStep>
-
-      <SetupStep n={3} title="Get your project credentials" done={step >= 3} active={step === 2}>
-        <ol className="text-sm space-y-2 mb-4 pl-5 list-decimal text-muted-foreground">
-          <li>Open your project in Supabase</li>
-          <li>Click <span className="font-mono text-foreground">Project Settings</span> in the left sidebar</li>
-          <li>Click <span className="font-mono text-foreground">API</span> under Settings</li>
-          <li>Copy <span className="font-mono text-foreground">Project URL</span> — paste below</li>
-          <li>Copy <span className="font-mono text-foreground">service_role</span> key — paste below</li>
-        </ol>
-        <div className="space-y-2">
-          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://xxxx.supabase.co"
-            className="w-full bg-background border border-border rounded px-3 py-2 text-sm font-mono" />
-          <div className="relative">
-            <input type={showKey ? "text" : "password"} value={key} onChange={(e) => setKey(e.target.value)} placeholder="service_role key"
-              className="w-full bg-background border border-border rounded px-3 py-2 pr-9 text-sm font-mono" />
-            <button onClick={() => setShowKey(!showKey)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-              {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          <div className="mt-5 flex flex-wrap gap-2">
+            <a
+              href={ws.supabase_project_url}
+              target="_blank"
+              rel="noreferrer"
+              className="bg-brand text-primary-foreground px-4 py-2 rounded text-sm font-medium hover:opacity-90 inline-flex items-center gap-1.5"
+            >
+              Open my data storage <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+            <button
+              onClick={() => setEditing(true)}
+              className="px-4 py-2 border border-border rounded text-sm hover:border-foreground"
+            >
+              Change
             </button>
           </div>
-          <button onClick={connect} disabled={busy || !url || !key}
-            className="px-4 py-2 bg-brand text-primary-foreground rounded text-sm hover:opacity-90 disabled:opacity-50">
-            {busy ? "Testing..." : "Test & Connect"}
-          </button>
         </div>
-      </SetupStep>
+      </div>
+    );
+  }
 
-      <Card title="Optional: enable raw SQL queries">
-        <p className="text-sm text-muted-foreground mb-3">
-          To use the in-app SQL editor and stats, run this once in your Supabase project's SQL Editor:
+  // ───────── Not connected ─────────
+  return (
+    <div className="p-6 max-w-2xl mx-auto">
+      <div className="bg-surface border border-border rounded-lg p-10 text-center">
+        <div className="mx-auto h-20 w-20 rounded-full bg-foreground/5 flex items-center justify-center mb-5">
+          <Database className="h-10 w-10" />
+        </div>
+        <h2 className="text-xl font-semibold">Set up your data storage 🗄️</h2>
+        <p className="text-sm text-muted-foreground mt-2 max-w-sm mx-auto">
+          Think of it like a spreadsheet your app uses to remember everything — your users, their info, all of it. It's free.
         </p>
-        <pre className="bg-background border border-border rounded p-3 text-[11px] font-mono overflow-x-auto">{EXEC_SQL_SETUP}</pre>
-        <button onClick={() => { navigator.clipboard.writeText(EXEC_SQL_SETUP); toast.success("Copied"); }}
-          className="mt-3 text-xs border border-border rounded px-3 py-1.5 hover:border-foreground">
-          Copy SQL
-        </button>
-      </Card>
-    </div>
-  );
-}
+        <a
+          href="https://supabase.com"
+          target="_blank"
+          rel="noreferrer"
+          className="mt-6 inline-flex items-center justify-center gap-2 bg-brand text-primary-foreground font-semibold px-6 py-3 rounded-lg text-base hover:opacity-90"
+        >
+          Set up Supabase <ExternalLink className="h-4 w-4" />
+        </a>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Sign up with the same GitHub account you used here.
+        </p>
 
-function SupabaseDashboard({ ws }: { ws: any }) {
-  const getReport = useServerFn(getSupabaseReport);
-  const getLogs = useServerFn(getSupabaseAuthLogs);
-
-  const [report, setReport] = useState<any>(null);
-  const [logs, setLogs] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [activeTable, setActiveTable] = useState<string | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const [r, l] = await Promise.all([
-          getReport({ data: { workspaceId: ws.id } }),
-          getLogs({ data: { workspaceId: ws.id } }).catch(() => ({ logs: [] })),
-        ]);
-        setReport(r);
-        setLogs(l.logs);
-      } catch (e: any) {
-        toast.error(e?.message ?? "Failed");
-      } finally {
-        setLoading(false);
-      }
-    })();
-    // eslint-disable-next-line
-  }, [ws.id]);
-
-  if (loading) return <div className="p-6 text-sm text-muted-foreground">Loading Supabase…</div>;
-  if (!report) return null;
-
-  return (
-    <div className="p-6 max-w-6xl space-y-6">
-      {report.sqlError && (
-        <div className="border border-warning/30 bg-warning/5 rounded p-4 flex gap-3 text-sm">
-          <AlertTriangle className="h-4 w-4 text-warning shrink-0 mt-0.5" />
-          <div>
-            <div className="font-medium">Limited mode</div>
-            <div className="text-muted-foreground text-xs mt-1">
-              {report.sqlError} Some stats and the SQL editor are disabled until you create the exec_sql RPC (see Setup).
-            </div>
+        <div className="mt-8 pt-6 border-t border-border text-left">
+          <p className="text-sm text-muted-foreground mb-3">
+            Come back here after Supabase finishes and paste your project URL below 👇
+          </p>
+          <label className="text-xs text-muted-foreground">Your project URL</label>
+          <input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://xxxx.supabase.co"
+            className="mt-1 w-full bg-background border border-border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand"
+          />
+          <p className="mt-2 text-xs text-muted-foreground">
+            Supabase shows this in your project under Settings → API.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={save}
+              disabled={busy || !url.trim()}
+              className="bg-brand text-primary-foreground px-4 py-2 rounded text-sm font-medium hover:opacity-90 disabled:opacity-50"
+            >
+              {busy ? "Saving..." : "Save my project URL"}
+            </button>
+            {editing && (
+              <button
+                onClick={() => { setEditing(false); setUrl(ws.supabase_project_url ?? ""); }}
+                className="px-4 py-2 border border-border rounded text-sm hover:border-foreground"
+              >
+                Cancel
+              </button>
+            )}
           </div>
         </div>
-      )}
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Stat label="Total users" value={String(report.userCount)} />
-        <Stat label="Signups today" value={String(report.signupsToday)} />
-        <Stat label="Tables" value={String(report.tables?.length ?? 0)} />
-        <Stat label="DB size" value={report.dbSize ?? "—"} />
       </div>
-
-      <Card title="Recent signups">
-        {report.recentUsers.length === 0 ? <p className="text-sm text-muted-foreground">No users yet.</p> : (
-          <ul className="divide-y divide-border -mx-5">
-            {report.recentUsers.map((u: any) => (
-              <li key={u.id} className="px-5 py-2 flex items-center gap-3 text-sm">
-                <span className="font-mono truncate flex-1">{u.email}</span>
-                <span className="text-xs text-muted-foreground">{new Date(u.created_at).toLocaleString()}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
-
-      <div className="grid md:grid-cols-2 gap-6">
-        <Card title="Tables">
-          {report.tables.length === 0 ? <p className="text-sm text-muted-foreground">No tables.</p> : (
-            <ul className="divide-y divide-border -mx-5">
-              {report.tables.map((t: any) => (
-                <li key={t.name}>
-                  <button onClick={() => setActiveTable(t.name)}
-                    className="w-full px-5 py-2 text-left text-sm hover:bg-background flex items-center gap-3">
-                    <span className="font-mono flex-1">{t.name}</span>
-                    <span className="text-xs text-muted-foreground">~{t.row_estimate} rows</span>
-                    <span className="text-xs text-muted-foreground">{t.size}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        <Card title="Recent auth events">
-          {logs.length === 0 ? <p className="text-sm text-muted-foreground">No events.</p> : (
-            <ul className="divide-y divide-border -mx-5 max-h-80 overflow-y-auto scrollbar-thin">
-              {logs.map((l: any, i) => (
-                <li key={i} className="px-5 py-2 text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono">{l.action}</span>
-                    {l.email && <span className="text-muted-foreground truncate">{l.email}</span>}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground">{new Date(l.created_at).toLocaleString()}</div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      </div>
-
-      {activeTable && <TableViewer ws={ws} table={activeTable} onClose={() => setActiveTable(null)} />}
-
-      <SqlEditor ws={ws} disabled={!!report.sqlError} />
     </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="bg-surface border border-border rounded-lg p-4">
-      <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className="text-2xl font-semibold mt-1">{value}</div>
-    </div>
-  );
-}
-
-function TableViewer({ ws, table, onClose }: { ws: any; table: string; onClose: () => void }) {
-  const fetchData = useServerFn(getSupabaseTableData);
-  const del = useServerFn(deleteSupabaseRow);
-  const ins = useServerFn(insertSupabaseRow);
-  const [page, setPage] = useState(0);
-  const [data, setData] = useState<{ rows: any[]; columns: string[]; total: number } | null>(null);
-  const [filter, setFilter] = useState("");
-  const [adding, setAdding] = useState(false);
-  const [newRow, setNewRow] = useState<Record<string, string>>({});
-
-  const load = async () => {
-    try {
-      const r = await fetchData({ data: { workspaceId: ws.id, table, page } });
-      setData(r);
-    } catch (e: any) { toast.error(e?.message ?? "Failed"); }
-  };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [table, page]);
-
-  const filtered = useMemo(() => {
-    if (!data || !filter) return data?.rows ?? [];
-    const q = filter.toLowerCase();
-    return data.rows.filter((r) => JSON.stringify(r).toLowerCase().includes(q));
-  }, [data, filter]);
-
-  const idCol = data?.columns.includes("id") ? "id" : data?.columns[0];
-
-  return (
-    <Card title={table} right={
-      <div className="flex gap-2 items-center">
-        <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter..."
-          className="bg-background border border-border rounded px-2 py-1 text-xs w-32" />
-        <button onClick={() => setAdding(!adding)} className="text-xs border border-border rounded px-2 py-1 hover:border-foreground">+ Row</button>
-        <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">Close</button>
-      </div>
-    }>
-      {adding && data && (
-        <div className="mb-3 p-3 border border-border rounded bg-background space-y-2">
-          {data.columns.filter((c) => !["id", "created_at", "updated_at"].includes(c)).map((c) => (
-            <div key={c} className="flex items-center gap-2">
-              <label className="text-xs font-mono w-32 text-muted-foreground">{c}</label>
-              <input value={newRow[c] ?? ""} onChange={(e) => setNewRow({ ...newRow, [c]: e.target.value })}
-                className="flex-1 bg-surface border border-border rounded px-2 py-1 text-xs font-mono" />
-            </div>
-          ))}
-          <div className="flex gap-2 justify-end">
-            <button onClick={() => { setAdding(false); setNewRow({}); }} className="text-xs border border-border rounded px-3 py-1.5 hover:border-foreground">Cancel</button>
-            <button onClick={async () => {
-              try { await ins({ data: { workspaceId: ws.id, table, row: newRow } }); toast.success("Added"); setAdding(false); setNewRow({}); load(); }
-              catch (e: any) { toast.error(e?.message ?? "Failed"); }
-            }} className="text-xs bg-brand text-primary-foreground rounded px-3 py-1.5">Save</button>
-          </div>
-        </div>
-      )}
-      {!data ? <p className="text-sm text-muted-foreground">Loading…</p> : (
-        <>
-          <div className="overflow-x-auto -mx-5 border-y border-border">
-            <table className="w-full text-xs font-mono">
-              <thead className="bg-background">
-                <tr>
-                  {data.columns.map((c) => <th key={c} className="px-3 py-2 text-left font-medium text-muted-foreground">{c}</th>)}
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((r, i) => (
-                  <tr key={i} className="border-t border-border hover:bg-background">
-                    {data.columns.map((c) => (
-                      <td key={c} className="px-3 py-1.5 truncate max-w-xs">{formatCell(r[c])}</td>
-                    ))}
-                    <td className="px-3 py-1.5">
-                      {idCol && (
-                        <button onClick={async () => {
-                          if (!confirm("Delete this row?")) return;
-                          try { await del({ data: { workspaceId: ws.id, table, idColumn: idCol, idValue: r[idCol] } }); toast.success("Deleted"); load(); }
-                          catch (e: any) { toast.error(e?.message ?? "Failed"); }
-                        }} className="text-muted-foreground hover:text-error">
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="flex items-center justify-between mt-3 text-xs text-muted-foreground">
-            <span>{data.total} rows · page {page + 1}</span>
-            <div className="flex gap-2">
-              <button onClick={() => setPage(Math.max(0, page - 1))} disabled={page === 0} className="border border-border rounded px-2 py-1 hover:border-foreground disabled:opacity-30"><ChevronLeft className="h-3 w-3" /></button>
-              <button onClick={() => setPage(page + 1)} disabled={(page + 1) * 50 >= data.total} className="border border-border rounded px-2 py-1 hover:border-foreground disabled:opacity-30"><ChevronRight className="h-3 w-3" /></button>
-            </div>
-          </div>
-        </>
-      )}
-    </Card>
-  );
-}
-
-function formatCell(v: any) {
-  if (v === null || v === undefined) return <span className="text-muted-foreground">null</span>;
-  if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
-}
-
-function SqlEditor({ ws, disabled }: { ws: any; disabled: boolean }) {
-  const run = useServerFn(runSupabaseQuery);
-  const [sql, setSql] = useState("select now();");
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<any>(null);
-
-  const isDangerous = /\b(drop|truncate|delete)\b/i.test(sql) && !/\bwhere\b/i.test(sql);
-
-  const exec = async () => {
-    if (isDangerous && !confirm("This query looks destructive (DROP / TRUNCATE / DELETE without WHERE). Continue?")) return;
-    setBusy(true);
-    try {
-      const r = await run({ data: { workspaceId: ws.id, sql } });
-      setResult(r);
-    } finally { setBusy(false); }
-  };
-
-  if (disabled) return null;
-
-  return (
-    <Card title="SQL editor">
-      <div className="border border-warning/30 bg-warning/5 rounded p-3 mb-3 flex gap-2 text-xs">
-        <AlertTriangle className="h-4 w-4 text-warning shrink-0" />
-        <span>This runs raw SQL against your Supabase database. Be careful — there's no undo.</span>
-      </div>
-      <textarea value={sql} onChange={(e) => setSql(e.target.value)} rows={5}
-        className="w-full bg-background border border-border rounded p-3 text-xs font-mono mb-3" />
-      <button onClick={exec} disabled={busy} className="px-4 py-2 bg-brand text-primary-foreground rounded text-sm hover:opacity-90 disabled:opacity-50">
-        {busy ? "Running…" : "Run Query"}
-      </button>
-      {result && (
-        <div className="mt-4">
-          {result.ok ? (
-            <pre className="bg-background border border-border rounded p-3 text-[11px] font-mono overflow-auto max-h-80">{JSON.stringify(result.result, null, 2)}</pre>
-          ) : (
-            <div className="text-sm text-error">{result.error}</div>
-          )}
-        </div>
-      )}
-    </Card>
   );
 }
