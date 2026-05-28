@@ -220,6 +220,25 @@ function RepoDashboard({ ws, onChangeRepo }: { ws: any; onChangeRepo: () => void
     return () => clearInterval(id);
   }, [load]);
 
+  const loadFiles = useCallback(async (path: string) => {
+    setFilesLoading(true);
+    setFilesError(null);
+    try {
+      const r = await listFiles({ data: { workspaceId: ws.id, path } });
+      setFileEntries(r.entries);
+      setFilePath(r.path);
+    } catch {
+      setFilesError("Couldn't load files — try again");
+      setFileEntries([]);
+    } finally {
+      setFilesLoading(false);
+    }
+  }, [listFiles, ws.id]);
+
+  useEffect(() => {
+    if (tab === "files" && fileEntries === null) loadFiles("");
+  }, [tab, fileEntries, loadFiles]);
+
   const toggleDiff = async (num: number) => {
     if (expanded === num) { setExpanded(null); return; }
     setExpanded(num);
