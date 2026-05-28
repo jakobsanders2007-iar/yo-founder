@@ -167,13 +167,17 @@ export function GithubTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void 
   return <RepoDashboard ws={ws} onChangeRepo={() => { setRepos(null); setShowRepoPicker(true); fetchRepos(); }} />;
 }
 
+type SubTab = "prs" | "files" | "activity";
+
 function RepoDashboard({ ws, onChangeRepo }: { ws: any; onChangeRepo: () => void }) {
   const getInfo = useServerFn(getGithubRepoInfo);
   const getPRs = useServerFn(getGithubPRs);
   const getPRDetail = useServerFn(getGithubPRDetail);
   const getCommits = useServerFn(getGithubCommits);
   const mergePR = useServerFn(mergeGithubPR);
+  const listFiles = useServerFn(listGithubRepoFiles);
 
+  const [tab, setTab] = useState<SubTab>("prs");
   const [info, setInfo] = useState<any>(null);
   const [prs, setPrs] = useState<any[] | null>(null);
   const [commits, setCommits] = useState<any[] | null>(null);
@@ -181,10 +185,15 @@ function RepoDashboard({ ws, onChangeRepo }: { ws: any; onChangeRepo: () => void
   const [refreshing, setRefreshing] = useState(false);
   const [merging, setMerging] = useState<number | null>(null);
   const [confirmMerge, setConfirmMerge] = useState<any>(null);
-  const [showCommits, setShowCommits] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [details, setDetails] = useState<Record<number, any>>({});
   const [loadingDetail, setLoadingDetail] = useState<number | null>(null);
+
+  // Files browser state
+  const [filePath, setFilePath] = useState<string>("");
+  const [fileEntries, setFileEntries] = useState<any[] | null>(null);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [filesError, setFilesError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setRefreshing(true);
