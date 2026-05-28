@@ -22,6 +22,7 @@ function SettingsPage() {
 
   const [provider, setProvider] = useState<"claude" | "gpt" | "gemini">("claude");
   const [aiKey, setAiKey] = useState("");
+  const [replaceAiKey, setReplaceAiKey] = useState(false);
   const [showAi, setShowAi] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiState, setAiState] = useState<{ ok: boolean; msg: string } | null>(null);
@@ -82,6 +83,7 @@ function SettingsPage() {
 
   const hasGithubChanges = !!ghToken.trim();
   const hasUnsavedChanges = hasProfileChanges || hasAiChanges || hasGithubChanges;
+  const activeAiKeySaved = provider === "claude" ? !!profile?.has_anthropic : provider === "gpt" ? !!profile?.has_openai : !!profile?.has_gemini;
 
   const persistAiSettings = async (opts?: { silent?: boolean }) => {
     const silent = opts?.silent ?? false;
@@ -102,6 +104,7 @@ function SettingsPage() {
       }));
 
       setAiKey("");
+      setReplaceAiKey(false);
       setAiState({ ok: true, msg: "Saved and hidden ✓" });
       if (!silent) toast.success("AI key saved");
       return { ok: true as const, saved: true as const };
