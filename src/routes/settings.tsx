@@ -251,6 +251,8 @@ function SettingsPage() {
               </div>
             </>
           )}
+        </section>
+
 
         {/* Profile */}
         <section className="bg-surface border border-border rounded-lg p-6">
