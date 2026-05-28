@@ -471,13 +471,52 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
       </div>
 
       <div className="border-t border-border bg-surface">
-        <div className="px-4 md:px-6 py-3 flex gap-2 items-end">
-          <textarea
-            value={text} onChange={(e) => setText(e.target.value.slice(0, 1000))}
-            onKeyDown={onKey} placeholder="What should we build?"
-            rows={2}
-            className="flex-1 bg-background border border-border rounded px-3 py-2 text-sm resize-none focus:outline-none focus:border-brand"
-          />
+        <div className="px-4 md:px-6 py-3 flex gap-2 items-end relative">
+          <div className="flex-1 relative">
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={(e) => {
+                const v = e.target.value.slice(0, 1000);
+                setText(v);
+                const caret = e.target.selectionStart ?? v.length;
+                const before = v.slice(0, caret);
+                const m = before.match(/@(\w*)$/);
+                setMentionQuery(m ? m[1].toLowerCase() : null);
+              }}
+              onKeyDown={onKey} placeholder="What should we build? Use @ to mention a co-founder."
+              rows={2}
+              className="w-full bg-background border border-border rounded px-3 py-2 text-sm resize-none focus:outline-none focus:border-brand"
+            />
+            {mentionQuery !== null && (
+              <div className="absolute bottom-full left-0 mb-1 bg-surface border border-border rounded shadow-lg z-20 min-w-[180px] max-h-48 overflow-y-auto">
+                {memberNames
+                  .filter((n: string) => n.toLowerCase().includes(mentionQuery))
+                  .slice(0, 5)
+                  .map((n: string) => (
+                    <button key={n}
+                      onClick={() => {
+                        const ta = textareaRef.current;
+                        if (!ta) return;
+                        const caret = ta.selectionStart ?? text.length;
+                        const before = text.slice(0, caret).replace(/@\w*$/, `@${n} `);
+                        const after = text.slice(caret);
+                        const next = (before + after).slice(0, 1000);
+                        setText(next);
+                        setMentionQuery(null);
+                        setTimeout(() => { ta.focus(); ta.setSelectionRange(before.length, before.length); }, 0);
+                      }}
+                      className="w-full text-left px-3 py-1.5 text-sm hover:bg-background flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full" style={{ background: members.find((mm: any) => mm.profiles?.display_name === n)?.profiles?.avatar_color ?? "#666" }} />
+                      {n}
+                    </button>
+                  ))}
+                {memberNames.filter((n: string) => n.toLowerCase().includes(mentionQuery)).length === 0 && (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">No matches</div>
+                )}
+              </div>
+            )}
+          </div>
           <div className="flex flex-col items-end gap-1">
             <span className="text-[10px] text-muted-foreground">{text.length}/1000</span>
             <button onClick={send} disabled={!text.trim() || sending}
@@ -487,6 +526,7 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
           </div>
         </div>
       </div>
+
 
       {showGenModal && genResult && (
         <Modal onClose={() => setShowGenModal(false)} title="Generated Claude Code Prompt">
