@@ -370,24 +370,24 @@ type Job = {
 };
 
 const STEPS: { key: string; label: string; matches: string[] }[] = [
-  { key: "clone",  label: "Cloning repo",       matches: ["cloning"] },
-  { key: "code",   label: "Reading & coding",   matches: ["coding"] },
-  { key: "commit", label: "Committing changes", matches: ["committing"] },
-  { key: "pr",     label: "Opening PR",         matches: ["pr_opened"] },
+  { key: "read",   label: "Reading your code",          matches: ["reading", "cloning"] },
+  { key: "code",   label: "Making your changes",        matches: ["coding"] },
+  { key: "commit", label: "Saving the changes",         matches: ["committing"] },
+  { key: "pr",     label: "Sending changes for review", matches: ["pr_opened"] },
 ];
 
 function stepState(jobStatus: string, idx: number): "done" | "active" | "idle" | "error" {
-  if (jobStatus === "failed") {
-    // mark the last in-progress step as error; everything after idle
+  const order = ["queued", "reading", "coding", "committing", "pr_opened"];
+  // back-compat: treat legacy "cloning" as "reading"
+  const status = jobStatus === "cloning" ? "reading" : jobStatus;
+  if (status === "failed") {
     return idx === 0 ? "error" : "idle";
   }
-  const order = ["queued", "cloning", "coding", "committing", "pr_opened"];
-  const cur = order.indexOf(jobStatus);
+  const cur = order.indexOf(status);
   if (cur < 0) return "idle";
-  // step idx done when current > idx+1
+  if (status === "pr_opened") return "done";
   if (cur > idx + 1) return "done";
   if (cur === idx + 1) return "active";
-  if (jobStatus === "pr_opened") return "done";
   return "idle";
 }
 
