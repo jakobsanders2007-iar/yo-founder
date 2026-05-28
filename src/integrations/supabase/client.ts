@@ -2,15 +2,17 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-// HARDCODED: user moved off Lovable Cloud to their own Supabase project.
-// .env is auto-managed by Lovable Cloud and reverts, so values are pinned here.
-const SUPABASE_URL_HARDCODED = "https://wdwkighaeysefnafpyyf.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY_HARDCODED = "sb_publishable_HtkdUzBBbkqr4xrYSwK5V6w_i9Qsv";
-
 function createSupabaseClient() {
-  const SUPABASE_URL = SUPABASE_URL_HARDCODED;
-  const SUPABASE_PUBLISHABLE_KEY = SUPABASE_PUBLISHABLE_KEY_HARDCODED;
+  const SUPABASE_URL =
+    import.meta.env.VITE_SUPABASE_URL ||
+    (typeof process !== 'undefined' ? process.env.SUPABASE_URL : undefined);
+  const SUPABASE_PUBLISHABLE_KEY =
+    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+    (typeof process !== 'undefined' ? process.env.SUPABASE_PUBLISHABLE_KEY : undefined);
 
+  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+    throw new Error('Supabase env vars missing');
+  }
 
   return createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     auth: {
@@ -23,12 +25,9 @@ function createSupabaseClient() {
 
 let _supabase: ReturnType<typeof createSupabaseClient> | undefined;
 
-// Import the supabase client like this:
-// import { supabase } from "@/integrations/supabase/client";
 export const supabase = new Proxy({} as ReturnType<typeof createSupabaseClient>, {
   get(_, prop, receiver) {
     if (!_supabase) _supabase = createSupabaseClient();
     return Reflect.get(_supabase, prop, receiver);
   },
 });
-
