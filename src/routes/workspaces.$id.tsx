@@ -453,28 +453,18 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
     setGenerating(true);
     try {
       const r = await genPrompt({ data: { workspaceId } });
-      setGenResult(r);
-      setShowGenModal(true);
+      const { error } = await supabase.from("prompts").insert({
+        workspace_id: workspaceId, created_by: user.id,
+        title: r.title, content: r.content, status: "draft",
+      });
+      if (error) throw error;
+      toast.success("Saved as draft in Code tab");
+      onPromptSaved?.();
     } catch (e: any) {
-      toast.error(e?.message ?? "Failed");
+      toast.error(e?.message ?? "Failed to generate");
     } finally {
       setGenerating(false);
     }
-  };
-
-  const saveGenerated = async () => {
-    if (!genResult) return;
-    setSaving(true);
-    const { error } = await supabase.from("prompts").insert({
-      workspace_id: workspaceId, created_by: user.id,
-      title: genResult.title, content: genResult.content, status: "ready",
-    });
-    setSaving(false);
-    if (error) return toast.error(error.message);
-    toast.success("Saved to Code tab");
-    onPromptSaved?.();
-    setShowGenModal(false);
-    setGenResult(null);
   };
 
   const doDelete = async (id: string) => {
