@@ -24,6 +24,12 @@ export function GithubTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void 
   const [profile, setProfile] = useState<any>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [ghBusy, setGhBusy] = useState(false);
+  const [showTokenForm, setShowTokenForm] = useState(false);
+  const [ghToken, setGhToken] = useState("");
+  const [showGh, setShowGh] = useState(false);
+  const [ghState, setGhState] = useState<{ ok: boolean; msg: string } | null>(null);
+  const testGh = useServerFn(testGithubToken);
+  const saveGh = useServerFn(saveGithubToken);
 
   const saveRepo = useServerFn(saveWorkspaceRepo);
   const listRepos = useServerFn(listGithubRepos);
