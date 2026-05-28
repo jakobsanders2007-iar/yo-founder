@@ -405,15 +405,20 @@ export const saveAiKey = createServerFn({ method: "POST" })
   .inputValidator((input) =>
     z.object({
       provider: z.enum(["claude", "gpt", "gemini"]),
-      apiKey: z.string().min(10).max(500),
+      apiKey: z.string().max(500).optional().default(""),
     }).parse(input)
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context as any;
     const payload: any = { id: userId, ai_provider: data.provider };
-    if (data.provider === "claude") payload.anthropic_key = data.apiKey;
-    else if (data.provider === "gpt") payload.openai_key = data.apiKey;
-    else payload.gemini_key = data.apiKey;
+    if (data.provider === "claude") {
+      if (!data.apiKey || data.apiKey.length < 10) throw new Error("Missing key");
+      payload.anthropic_key = data.apiKey;
+    } else if (data.provider === "gpt") {
+      if (!data.apiKey || data.apiKey.length < 10) throw new Error("Missing key");
+      payload.openai_key = data.apiKey;
+    }
+    // gemini: no user key needed, server uses GEMINI_API_KEY
     const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "id" });
     if (error) throw new Error(error.message);
     return { ok: true };
