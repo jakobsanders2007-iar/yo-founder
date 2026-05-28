@@ -102,20 +102,25 @@ function SettingsPage() {
     toast.success("AI saved ✓");
   };
 
-  const connectGithub = async () => {
-    setGhBusy(true);
+  const saveGithubFromToken = async () => {
+    if (!ghToken.trim()) return toast.error("Paste a GitHub token first");
+    setGhBusy(true); setGhState(null);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "github",
-        options: {
-          redirectTo: window.location.origin + "/dashboard",
-          scopes: "repo read:user user:email",
-        },
-      });
-      if (error) throw error;
-    } catch {
-      toast.error("Couldn't connect GitHub right now — please try again or use email to sign in");
+      const t = await testGh({ data: { token: ghToken.trim() } });
+      if (!t.success) {
+        setGhBusy(false);
+        setGhState({ ok: false, msg: "That token didn't work — check it has `repo` + `read:user` scopes" });
+        return;
+      }
+      await saveGh({ data: { token: ghToken.trim(), login: t.login } });
       setGhBusy(false);
+      setGhState({ ok: true, msg: `Connected as @${t.login} ✓` });
+      setProfile((p: any) => ({ ...p, github_username: t.login, has_github: true }));
+      setGhToken("");
+      toast.success(`GitHub connected as @${t.login}`);
+    } catch (e: any) {
+      setGhBusy(false);
+      setGhState({ ok: false, msg: e?.message ?? "Couldn't save — please try again" });
     }
   };
 
