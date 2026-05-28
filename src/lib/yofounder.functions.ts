@@ -460,15 +460,15 @@ export const saveAiKey = createServerFn({ method: "POST" })
 export const saveGithubToken = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) =>
-    z.object({ token: z.string().min(10).max(500), login: z.string().min(1).max(100) }).parse(input)
+    z.object({ token: z.string().min(10).max(500), login: z.string().min(1).max(100).optional() }).parse(input)
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context as any;
+    const profilePayload: Record<string, any> = { id: userId, onboarded: true };
+    if (data.login) profilePayload.github_username = data.login;
+
     const { error: profErr } = await supabase.from("profiles")
-      .upsert(
-        { id: userId, github_username: data.login, onboarded: true },
-        { onConflict: "id" }
-      );
+      .upsert(profilePayload, { onConflict: "id" });
     if (profErr) throw new Error(profErr.message);
     const { error: secErr } = await supabase.from("profile_secrets")
       .upsert(
