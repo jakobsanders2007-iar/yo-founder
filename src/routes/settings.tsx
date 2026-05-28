@@ -289,7 +289,7 @@ function SettingsPage() {
               </div>
               <div className="mt-3 flex items-center gap-3">
                 <button
-                  onClick={saveGithubFromToken}
+                  onClick={handleGithubSaveClick}
                   disabled={ghBusy || !ghToken.trim()}
                   className="bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50 inline-flex items-center gap-2"
                 >
@@ -346,7 +346,7 @@ function SettingsPage() {
                 Admin note: add <code className="font-mono">GEMINI_API_KEY</code> to your Supabase edge function secrets to enable Gemini for users.
               </p>
               <div className="mt-3 flex items-center gap-3">
-                <button onClick={handleAiSave} disabled={aiBusy}
+                <button onClick={handleAiSaveClick} disabled={aiBusy}
                   className="bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50">
                   {aiBusy ? "Saving..." : "Use Gemini"}
                 </button>
@@ -373,7 +373,7 @@ function SettingsPage() {
                 </button>
               </div>
               <div className="mt-3 flex items-center gap-3">
-                <button onClick={handleAiSave} disabled={aiBusy || !aiKey.trim()}
+                <button onClick={handleAiSaveClick} disabled={aiBusy || !aiKey.trim()}
                   className="bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50">
                   {aiBusy ? "Saving..." : "Save"}
                 </button>
@@ -403,11 +403,26 @@ function SettingsPage() {
               />
             ))}
           </div>
-          <button onClick={handleProfileSave} disabled={profBusy}
+          <button onClick={handleProfileSaveClick} disabled={profBusy}
             className="mt-6 bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50">
             {profBusy ? "Saving..." : "Save"}
           </button>
         </section>
+
+        <div className="sticky bottom-4 z-10 flex justify-end">
+          <div className="border border-border bg-surface/95 backdrop-blur rounded-lg px-3 py-3 shadow-sm flex items-center gap-3">
+            <span className="text-xs text-muted-foreground">
+              {hasUnsavedChanges ? "Unsaved changes" : "Everything saved"}
+            </span>
+            <button
+              onClick={handleSaveAll}
+              disabled={saveAllBusy || !hasUnsavedChanges}
+              className="bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50"
+            >
+              {saveAllBusy ? "Saving all..." : "Save all changes"}
+            </button>
+          </div>
+        </div>
       </main>
     </div>
   );
