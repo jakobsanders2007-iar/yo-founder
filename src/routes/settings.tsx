@@ -31,8 +31,14 @@ function SettingsPage() {
   const [profBusy, setProfBusy] = useState(false);
   const [ghBusy, setGhBusy] = useState(false);
 
+  const [ghToken, setGhToken] = useState("");
+  const [showGh, setShowGh] = useState(false);
+  const [ghState, setGhState] = useState<{ ok: boolean; msg: string } | null>(null);
+
   const testAi = useServerFn(testAiKey);
   const saveAi = useServerFn(saveAiKey);
+  const testGh = useServerFn(testGithubToken);
+  const saveGh = useServerFn(saveGithubToken);
 
   useEffect(() => {
     if (loading) return;
