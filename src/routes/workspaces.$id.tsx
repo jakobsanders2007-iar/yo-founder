@@ -521,7 +521,7 @@ function CodeTab({ ws, workspaceId, user }: any) {
   const statusStyle = (s: string) => {
     const j = (s || "").toLowerCase();
     if (j === "pushed" || j === "pr_opened") return "bg-violet-500/15 text-violet-400";
-    if (["cloning", "coding", "committing", "queued"].includes(j)) return "bg-blue-500/15 text-blue-400 animate-pulse";
+    if (["reading", "cloning", "coding", "committing", "queued"].includes(j)) return "bg-blue-500/15 text-blue-400 animate-pulse";
     if (j === "failed") return "bg-error/15 text-error";
     if (j === "ready") return "bg-amber-500/15 text-amber-500";
     return "bg-muted text-muted-foreground";
