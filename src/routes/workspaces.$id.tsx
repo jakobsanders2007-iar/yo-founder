@@ -34,6 +34,96 @@ export const Route = createFileRoute("/workspaces/$id")({
 type Tab = "chat" | "code" | "github" | "vercel" | "supabase" | "domain";
 const TAB_ORDER: Tab[] = ["chat", "code", "github", "vercel", "supabase", "domain"];
 
+const REACTION_EMOJIS = ["👍", "❤️", "🎉", "🚀", "😂", "👀"];
+
+function renderWithMentions(content: string, memberNames: string[]) {
+  if (!memberNames.length) return content;
+  // Match @ followed by word characters
+  const parts: (string | { mention: string })[] = [];
+  const regex = /@([A-Za-z0-9_]+(?:\s[A-Za-z0-9_]+)?)/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(content)) !== null) {
+    const matchName = m[1];
+    const member = memberNames.find((n) => n.toLowerCase() === matchName.toLowerCase());
+    if (member) {
+      if (m.index > last) parts.push(content.slice(last, m.index));
+      parts.push({ mention: member });
+      last = m.index + m[0].length;
+    }
+  }
+  if (last < content.length) parts.push(content.slice(last));
+  if (parts.length === 0) return content;
+  return parts.map((p, i) =>
+    typeof p === "string" ? <span key={i}>{p}</span> :
+      <span key={i} className="bg-brand/15 text-brand px-1 rounded font-medium">@{p.mention}</span>
+  );
+}
+
+function MessageReactionsBar({ messageId, userId, reactions, membersById }: {
+  messageId: string; userId: string; reactions: any[]; membersById: Record<string, any>;
+}) {
+  const [picking, setPicking] = useState(false);
+  // Group reactions by emoji
+  const grouped: Record<string, any[]> = {};
+  for (const r of reactions) (grouped[r.emoji] ||= []).push(r);
+
+  const toggle = async (emoji: string) => {
+    const mine = reactions.find((r) => r.emoji === emoji && r.user_id === userId);
+    if (mine) {
+      await supabase.from("message_reactions").delete().eq("id", mine.id);
+    } else {
+      await supabase.from("message_reactions").insert({ message_id: messageId, emoji, user_id: userId });
+    }
+    setPicking(false);
+  };
+
+  const entries = Object.entries(grouped);
+  if (entries.length === 0 && !picking) {
+    return (
+      <div className="mt-1 opacity-0 group-hover:opacity-100 transition">
+        <button onClick={() => setPicking(true)}
+          className="text-xs text-muted-foreground hover:text-foreground border border-border rounded px-1.5 py-0.5">
+          + 😊
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-1.5 flex items-center gap-1 flex-wrap">
+      {entries.map(([emoji, list]) => {
+        const mine = list.some((r) => r.user_id === userId);
+        const names = list.map((r) => membersById[r.user_id]?.display_name ?? "?").join(", ");
+        return (
+          <button key={emoji} onClick={() => toggle(emoji)} title={names}
+            className={cn(
+              "text-xs px-1.5 py-0.5 rounded border flex items-center gap-1 transition",
+              mine ? "bg-brand/15 border-brand/40 text-foreground" : "bg-background border-border hover:border-foreground"
+            )}>
+            <span>{emoji}</span>
+            <span className="text-[10px] text-muted-foreground">{list.length}</span>
+          </button>
+        );
+      })}
+      {picking ? (
+        <div className="flex items-center gap-0.5 border border-border rounded px-1 bg-surface">
+          {REACTION_EMOJIS.map((e) => (
+            <button key={e} onClick={() => toggle(e)} className="text-sm hover:scale-125 transition px-0.5">{e}</button>
+          ))}
+          <button onClick={() => setPicking(false)} className="text-muted-foreground hover:text-foreground ml-0.5"><X className="h-3 w-3" /></button>
+        </div>
+      ) : (
+        <button onClick={() => setPicking(true)}
+          className="opacity-0 group-hover:opacity-100 transition text-xs text-muted-foreground hover:text-foreground border border-border rounded px-1.5 py-0.5">
+          +
+        </button>
+      )}
+    </div>
+  );
+}
+
+
 function WorkspacePage() {
   const { id: workspaceId } = useParams({ from: "/workspaces/$id" });
   const navigate = useNavigate();
@@ -141,7 +231,20 @@ function InviteModal({ workspaceId, workspaceName, onClose }: { workspaceId: str
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ link: string; emailed: boolean; reason?: string } | null>(null);
+  const [pending, setPending] = useState<any[]>([]);
   const invite = useServerFn(sendInvite);
+
+  const loadPending = useCallback(async () => {
+    const { data } = await supabase
+      .from("workspace_invites")
+      .select("id, email, accepted, created_at, token")
+      .eq("workspace_id", workspaceId)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    setPending(data ?? []);
+  }, [workspaceId]);
+
+  useEffect(() => { loadPending(); }, [loadPending]);
 
   const submit = async () => {
     if (!email.trim()) return;
@@ -151,6 +254,7 @@ function InviteModal({ workspaceId, workspaceName, onClose }: { workspaceId: str
       setResult({ link: r.link, emailed: r.emailed, reason: r.reason });
       if (r.emailed) toast.success(`Invite sent to ${email.trim()}`);
       else toast.message("Invite created — share the link", { description: r.reason });
+      loadPending();
     } catch (e: any) {
       toast.error(e?.message ?? "Failed to send invite");
     } finally {
@@ -158,9 +262,15 @@ function InviteModal({ workspaceId, workspaceName, onClose }: { workspaceId: str
     }
   };
 
+  const copyLink = (token: string) => {
+    const link = `${window.location.origin}/invite/${token}`;
+    navigator.clipboard.writeText(link);
+    toast.success("Link copied");
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center px-4" onClick={onClose}>
-      <div className="bg-surface border border-border rounded-lg p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-surface border border-border rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Invite a co-founder to {workspaceName}</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
@@ -170,15 +280,14 @@ function InviteModal({ workspaceId, workspaceName, onClose }: { workspaceId: str
             <p className="text-sm text-muted-foreground mb-4">
               They'll get an email with a link to join. Up to 8 members per workspace.
             </p>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-              placeholder="cofounder@example.com" autoFocus
-              onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
-              className="w-full bg-background border border-border rounded px-3 py-2 text-sm mb-4 focus:outline-none focus:border-brand" />
-            <div className="flex justify-end gap-2">
-              <button onClick={onClose} className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground">Cancel</button>
+            <div className="flex gap-2 mb-4">
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                placeholder="cofounder@example.com" autoFocus
+                onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+                className="flex-1 bg-background border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-brand" />
               <button onClick={submit} disabled={busy || !email.trim()}
                 className="px-4 py-2 bg-brand text-primary-foreground rounded text-sm font-medium hover:opacity-90 disabled:opacity-50">
-                {busy ? "Sending..." : "Send Invite"}
+                {busy ? "..." : "Send"}
               </button>
             </div>
           </>
@@ -194,11 +303,32 @@ function InviteModal({ workspaceId, workspaceName, onClose }: { workspaceId: str
               <button onClick={() => { navigator.clipboard.writeText(result.link); toast.success("Copied"); }}
                 className="px-3 py-2 bg-background border border-border rounded text-xs hover:border-brand"><Copy className="h-3.5 w-3.5" /></button>
             </div>
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-end gap-2 mb-4">
               <button onClick={() => { setResult(null); setEmail(""); }} className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground">Invite another</button>
-              <button onClick={onClose} className="px-4 py-2 bg-brand text-primary-foreground rounded text-sm font-medium hover:opacity-90">Done</button>
             </div>
           </>
+        )}
+
+        {pending.length > 0 && (
+          <div className="border-t border-border pt-4">
+            <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Invites</h3>
+            <ul className="space-y-2">
+              {pending.map((inv) => (
+                <li key={inv.id} className="flex items-center gap-2 text-sm">
+                  <span className="flex-1 truncate">{inv.email}</span>
+                  {inv.accepted ? (
+                    <span className="text-[10px] uppercase tracking-wide text-success font-medium px-2 py-0.5 rounded bg-success/10">Joined</span>
+                  ) : (
+                    <>
+                      <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium px-2 py-0.5 rounded bg-background border border-border">Pending</span>
+                      <button onClick={() => copyLink(inv.token)} title="Copy invite link"
+                        className="text-muted-foreground hover:text-foreground"><Copy className="h-3.5 w-3.5" /></button>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </div>
     </div>
@@ -209,6 +339,7 @@ function InviteModal({ workspaceId, workspaceName, onClose }: { workspaceId: str
 /* ============ CHAT TAB ============ */
 function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
   const [messages, setMessages] = useState<any[]>([]);
+  const [reactions, setReactions] = useState<Record<string, any[]>>({});
   const [text, setText] = useState("");
   const [typing, setTyping] = useState<{ name: string; provider: string; color: string } | null>(null);
   const [sending, setSending] = useState(false);
@@ -218,7 +349,9 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const respondSender = useServerFn(respondAsSenderAi);
   const respondCofounder = useServerFn(respondAsCofounderAi);
@@ -230,24 +363,54 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
     return m;
   }, [members]);
 
+  const memberNames = useMemo(
+    () => members.map((m: any) => m.profiles?.display_name).filter(Boolean),
+    [members]
+  );
+
+  const loadReactions = useCallback(async (messageIds: string[]) => {
+    if (!messageIds.length) return;
+    const { data } = await supabase
+      .from("message_reactions")
+      .select("id, message_id, emoji, user_id")
+      .in("message_id", messageIds);
+    const grouped: Record<string, any[]> = {};
+    for (const r of data ?? []) {
+      (grouped[r.message_id] ||= []).push(r);
+    }
+    setReactions(grouped);
+  }, []);
+
   useEffect(() => {
     (async () => {
       const { data } = await supabase.from("messages")
         .select("*").eq("workspace_id", workspaceId).order("created_at").limit(200);
-      setMessages(data ?? []);
+      const msgs = data ?? [];
+      setMessages(msgs);
+      loadReactions(msgs.map((m) => m.id));
     })();
     const channel = supabase.channel(`ws-${workspaceId}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `workspace_id=eq.${workspaceId}` },
         (payload) => setMessages((prev) => [...prev, payload.new]))
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages", filter: `workspace_id=eq.${workspaceId}` },
         (payload) => setMessages((prev) => prev.filter((m) => m.id !== (payload.old as any).id)))
+      .on("postgres_changes", { event: "*", schema: "public", table: "message_reactions" },
+        async (payload) => {
+          const row = (payload.new ?? payload.old) as any;
+          if (!row?.message_id) return;
+          // Reload reactions for that message
+          const { data } = await supabase.from("message_reactions")
+            .select("id, message_id, emoji, user_id").eq("message_id", row.message_id);
+          setReactions((prev) => ({ ...prev, [row.message_id]: data ?? [] }));
+        })
       .on("broadcast", { event: "typing" }, (p) => {
         setTyping(p.payload as any);
         setTimeout(() => setTyping(null), 4000);
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [workspaceId]);
+  }, [workspaceId, loadReactions]);
+
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -343,6 +506,7 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
           const borderColor = m.ai_provider === "claude" ? "#6366f1" : m.ai_provider === "gpt" ? "#10b981" : m.ai_provider === "gemini" ? "#4285F4" : "transparent";
           const providerName = m.ai_provider === "claude" ? "Claude" : m.ai_provider === "gpt" ? "ChatGPT" : m.ai_provider === "gemini" ? "Gemini" : "AI";
           const label = isAi ? `${name}'s ${providerName}` : name;
+          const msgReactions = reactions[m.id] ?? [];
           return (
             <div key={m.id} className="flex gap-3 group">
               <Avatar name={name} color={color} size="sm" />
@@ -361,8 +525,14 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
                   )}
                   style={isAi ? { borderColor } : undefined}
                 >
-                  {m.content}
+                  {renderWithMentions(m.content, memberNames)}
                 </div>
+                <MessageReactionsBar
+                  messageId={m.id}
+                  userId={user.id}
+                  reactions={msgReactions}
+                  membersById={membersById}
+                />
               </div>
               {isMine && (
                 <button
@@ -391,13 +561,52 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
       </div>
 
       <div className="border-t border-border bg-surface">
-        <div className="px-4 md:px-6 py-3 flex gap-2 items-end">
-          <textarea
-            value={text} onChange={(e) => setText(e.target.value.slice(0, 1000))}
-            onKeyDown={onKey} placeholder="What should we build?"
-            rows={2}
-            className="flex-1 bg-background border border-border rounded px-3 py-2 text-sm resize-none focus:outline-none focus:border-brand"
-          />
+        <div className="px-4 md:px-6 py-3 flex gap-2 items-end relative">
+          <div className="flex-1 relative">
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={(e) => {
+                const v = e.target.value.slice(0, 1000);
+                setText(v);
+                const caret = e.target.selectionStart ?? v.length;
+                const before = v.slice(0, caret);
+                const m = before.match(/@(\w*)$/);
+                setMentionQuery(m ? m[1].toLowerCase() : null);
+              }}
+              onKeyDown={onKey} placeholder="What should we build? Use @ to mention a co-founder."
+              rows={2}
+              className="w-full bg-background border border-border rounded px-3 py-2 text-sm resize-none focus:outline-none focus:border-brand"
+            />
+            {mentionQuery !== null && (
+              <div className="absolute bottom-full left-0 mb-1 bg-surface border border-border rounded shadow-lg z-20 min-w-[180px] max-h-48 overflow-y-auto">
+                {memberNames
+                  .filter((n: string) => n.toLowerCase().includes(mentionQuery))
+                  .slice(0, 5)
+                  .map((n: string) => (
+                    <button key={n}
+                      onClick={() => {
+                        const ta = textareaRef.current;
+                        if (!ta) return;
+                        const caret = ta.selectionStart ?? text.length;
+                        const before = text.slice(0, caret).replace(/@\w*$/, `@${n} `);
+                        const after = text.slice(caret);
+                        const next = (before + after).slice(0, 1000);
+                        setText(next);
+                        setMentionQuery(null);
+                        setTimeout(() => { ta.focus(); ta.setSelectionRange(before.length, before.length); }, 0);
+                      }}
+                      className="w-full text-left px-3 py-1.5 text-sm hover:bg-background flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full" style={{ background: members.find((mm: any) => mm.profiles?.display_name === n)?.profiles?.avatar_color ?? "#666" }} />
+                      {n}
+                    </button>
+                  ))}
+                {memberNames.filter((n: string) => n.toLowerCase().includes(mentionQuery)).length === 0 && (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">No matches</div>
+                )}
+              </div>
+            )}
+          </div>
           <div className="flex flex-col items-end gap-1">
             <span className="text-[10px] text-muted-foreground">{text.length}/1000</span>
             <button onClick={send} disabled={!text.trim() || sending}
@@ -407,6 +616,7 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
           </div>
         </div>
       </div>
+
 
       {showGenModal && genResult && (
         <Modal onClose={() => setShowGenModal(false)} title="Generated Claude Code Prompt">
