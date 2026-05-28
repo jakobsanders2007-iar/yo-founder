@@ -21,7 +21,7 @@ function SettingsPage() {
   const [profile, setProfile] = useState<any>(null);
 
   // AI
-  const [provider, setProvider] = useState<"claude" | "gpt">("claude");
+  const [provider, setProvider] = useState<"claude" | "gpt" | "gemini">("claude");
   const [aiKey, setAiKey] = useState("");
   const [showAi, setShowAi] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
