@@ -21,7 +21,7 @@ function OnboardingPage() {
   const [step, setStep] = useState(1);
   const [name, setName] = useState("");
   const [color, setColor] = useState(COLORS[0]);
-  const [provider, setProvider] = useState<"claude" | "gpt">("claude");
+  const [provider, setProvider] = useState<"claude" | "gpt" | "gemini">("claude");
   const [aiKey, setAiKey] = useState("");
   const [aiOk, setAiOk] = useState<null | boolean>(null);
   const [aiErr, setAiErr] = useState<string | null>(null);
