@@ -160,28 +160,35 @@ function SettingsPage() {
         <section className="bg-surface border border-border rounded-lg p-6">
           <h2 className="text-lg font-semibold mb-1">AI Provider</h2>
           <p className="text-sm text-muted-foreground mb-4">
-            Current: <span className="text-foreground font-medium">{profile.ai_provider === "claude" ? "Claude" : profile.ai_provider === "gpt" ? "ChatGPT" : "Not set"}</span>
-            {((profile.ai_provider === "claude" && profile.has_anthropic) || (profile.ai_provider === "gpt" && profile.has_openai)) && (
+            Current: <span className="text-foreground font-medium">
+              {profile.ai_provider === "claude" ? "Claude" : profile.ai_provider === "gpt" ? "ChatGPT" : profile.ai_provider === "gemini" ? "Gemini" : "Not set"}
+            </span>
+            {((profile.ai_provider === "claude" && profile.has_anthropic) || (profile.ai_provider === "gpt" && profile.has_openai) || (profile.ai_provider === "gemini" && profile.has_gemini)) && (
               <span className="ml-2 inline-flex items-center gap-1 text-success text-xs"><Check className="h-3.5 w-3.5" /> Connected</span>
             )}
           </p>
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            {(["claude","gpt"] as const).map((p) => {
-              const connected = p === "claude" ? profile.has_anthropic : profile.has_openai;
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            {(["claude","gpt","gemini"] as const).map((p) => {
+              const connected = p === "claude" ? profile.has_anthropic : p === "gpt" ? profile.has_openai : profile.has_gemini;
+              const accent = p === "claude" ? "#6366f1" : p === "gpt" ? "#10b981" : "#4285F4";
+              const label = p === "claude" ? "Claude" : p === "gpt" ? "ChatGPT" : "Gemini";
+              const sub = p === "claude" ? "Anthropic" : p === "gpt" ? "OpenAI" : "Google";
               return (
                 <button key={p} onClick={() => { setProvider(p); setAiState(null); }}
-                  className={`p-3 border rounded text-left transition relative ${provider === p ? "border-brand bg-accent" : "border-border hover:border-muted-foreground"}`}>
+                  className={`p-3 border rounded text-left transition relative ${provider === p ? "bg-accent" : "border-border hover:border-muted-foreground"}`}
+                  style={provider === p ? { borderColor: accent } : undefined}>
                   <div className="font-medium text-sm flex items-center gap-1.5">
-                    {p === "claude" ? "Claude" : "ChatGPT"}
+                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: accent }} />
+                    {label}
                     {connected && <Check className="h-3.5 w-3.5 text-success" />}
                   </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{p === "claude" ? "Anthropic" : "OpenAI"}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>
                 </button>
               );
             })}
           </div>
           <label className="text-xs text-muted-foreground">
-            {provider === "claude" ? "Anthropic API key" : "OpenAI API key"}
+            {provider === "claude" ? "Anthropic secret key" : provider === "gpt" ? "OpenAI secret key" : "Google AI key"}
           </label>
           <div className="mt-1 relative">
             <input
@@ -189,19 +196,27 @@ function SettingsPage() {
               value={aiKey}
               onChange={(e) => { setAiKey(e.target.value); setAiState(null); }}
               className="w-full bg-background border border-border rounded px-3 py-2 pr-10 text-sm font-mono focus:outline-none focus:border-brand"
-              placeholder={provider === "claude" ? "sk-ant-..." : "sk-..."}
+              placeholder={provider === "claude" ? "sk-ant-..." : provider === "gpt" ? "sk-..." : "AIza..."}
             />
             <button type="button" onClick={() => setShowAi((s) => !s)}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
               {showAi ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
+          {provider === "gemini" && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Get your free key at aistudio.google.com.{" "}
+              <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-brand hover:underline">
+                Get my free Gemini key →
+              </a>
+            </p>
+          )}
           <div className="mt-3 flex items-center gap-3">
             <button onClick={handleAiSave} disabled={aiBusy || !aiKey.trim()}
               className="bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50">
               {aiBusy ? "Testing..." : "Test & Save"}
             </button>
-            {aiState?.ok && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {aiState.msg}</span>}
+            {aiState?.ok && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {provider === "gemini" ? "Gemini connected ✓" : aiState.msg}</span>}
             {aiState && !aiState.ok && <span className="text-error text-sm flex items-center gap-1"><X className="h-4 w-4" /> {aiState.msg}</span>}
           </div>
         </section>
