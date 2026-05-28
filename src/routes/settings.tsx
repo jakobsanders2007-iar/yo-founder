@@ -191,18 +191,6 @@ function SettingsPage() {
     toast.success("All settings saved ✓");
   };
 
-  const handleAiSaveClick = () => {
-    void persistAiSettings();
-  };
-
-  const handleGithubSaveClick = () => {
-    void saveGithubFromToken();
-  };
-
-  const handleProfileSaveClick = () => {
-    void handleProfileSave();
-  };
-
   if (!profile) return <div className="min-h-screen bg-background flex items-center justify-center text-sm text-muted-foreground">Loading...</div>;
 
   return (
@@ -271,14 +259,7 @@ function SettingsPage() {
                 </button>
               </div>
               <div className="mt-3 flex items-center gap-3">
-                <button
-                  onClick={handleGithubSaveClick}
-                  disabled={ghBusy || !ghToken.trim()}
-                  className="bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50 inline-flex items-center gap-2"
-                >
-                  <Github className="h-4 w-4" />
-                  {ghBusy ? "Saving..." : "Save"}
-                </button>
+                <span className="text-xs text-muted-foreground">Stored only when you use the final save button below.</span>
                 {ghState?.ok && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {ghState.msg}</span>}
                 {ghState && !ghState.ok && <span className="text-error text-sm flex items-center gap-1"><X className="h-4 w-4" /> {ghState.msg}</span>}
               </div>
@@ -329,10 +310,7 @@ function SettingsPage() {
                 Admin note: add <code className="font-mono">GEMINI_API_KEY</code> to your Supabase edge function secrets to enable Gemini for users.
               </p>
               <div className="mt-3 flex items-center gap-3">
-                <button onClick={handleAiSaveClick} disabled={aiBusy}
-                  className="bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50">
-                  {aiBusy ? "Saving..." : "Use Gemini"}
-                </button>
+                <span className="text-xs text-muted-foreground">Your selection is stored when you use the final save button below.</span>
                 {aiState?.ok && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {aiState.msg}</span>}
                 {aiState && !aiState.ok && <span className="text-error text-sm flex items-center gap-1"><X className="h-4 w-4" /> {aiState.msg}</span>}
               </div>
@@ -356,10 +334,7 @@ function SettingsPage() {
                 </button>
               </div>
               <div className="mt-3 flex items-center gap-3">
-                <button onClick={handleAiSaveClick} disabled={aiBusy || !aiKey.trim()}
-                  className="bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50">
-                  {aiBusy ? "Saving..." : "Save"}
-                </button>
+                <span className="text-xs text-muted-foreground">Your key will be stored securely and hidden when you use the final save button below.</span>
                 {aiState?.ok && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {aiState.msg}</span>}
                 {aiState && !aiState.ok && <span className="text-error text-sm flex items-center gap-1"><X className="h-4 w-4" /> {aiState.msg}</span>}
               </div>
@@ -386,10 +361,7 @@ function SettingsPage() {
               />
             ))}
           </div>
-          <button onClick={handleProfileSaveClick} disabled={profBusy}
-            className="mt-6 bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50">
-            {profBusy ? "Saving..." : "Save"}
-          </button>
+          <p className="mt-6 text-xs text-muted-foreground">Profile changes are stored when you use the final save button below.</p>
         </section>
 
         <div className="sticky bottom-4 z-10 flex justify-end">
