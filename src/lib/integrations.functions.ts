@@ -1122,10 +1122,17 @@ Only include files you actually changed. Return valid JSON only, no explanation,
         });
 
         await supabase.from("prompts").update({
-          status: "pushed",
+          status: "pr_opened",
           github_issue_url: pr.html_url,
           github_issue_number: pr.number,
           claude_code_job_id: job.id,
+          files_affected: changes.map((c) => c.path).filter(Boolean),
+          summary: `Updated ${changes.length} file${changes.length === 1 ? "" : "s"} based on your request.`,
+          next_steps: [
+            "Review the changes in the Diff tab",
+            "Preview them live once the deployment is ready",
+            "Approve to push the update to your codebase",
+          ],
         }).eq("id", prompt.id);
       } catch (e: any) {
         await fail(e?.message ?? "Something went wrong");
