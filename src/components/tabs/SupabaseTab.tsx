@@ -65,8 +65,9 @@ function SupabaseSetup({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void }) 
 
   return (
     <div className="p-6 max-w-3xl space-y-6">
-      <div className="text-xs text-muted-foreground">
-        Supabase is your app's database + auth. <span className="text-success">Free tier</span>: 500MB database, 50K monthly active users, unlimited API requests.
+      <div>
+        <h2 className="text-xl font-semibold">Your data storage</h2>
+        <p className="text-sm text-muted-foreground mt-1">This is where your app remembers everything — your users, their info, all of it.</p>
       </div>
 
       <SetupStep n={1} title="Create a Supabase account" done={step >= 1} active={step === 0}>
