@@ -780,6 +780,40 @@ export const getGithubCommits = createServerFn({ method: "POST" })
     };
   });
 
+export const listGithubRepoFiles = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({
+      workspaceId: z.string().uuid(),
+      path: z.string().max(500).optional(),
+    }).parse(input)
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+    const ws = await getWorkspace(supabase, data.workspaceId);
+    if (!ws.github_repo) throw new Error("No repo connected");
+    const token = await getUserGithubToken(supabase, userId, data.workspaceId);
+    const safePath = (data.path ?? "").replace(/^\/+|\/+$/g, "");
+    const url = safePath
+      ? `/repos/${ws.github_repo}/contents/${encodeURI(safePath)}`
+      : `/repos/${ws.github_repo}/contents`;
+    const res = await ghFetch(token, url);
+    const items = Array.isArray(res) ? res : [];
+    return {
+      path: safePath,
+      entries: items.map((e: any) => ({
+        name: e.name,
+        path: e.path,
+        type: e.type as "file" | "dir",
+        size: e.size ?? 0,
+        html_url: e.html_url ?? null,
+      })).sort((a: any, b: any) => {
+        if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      }),
+    };
+  });
+
 export const getGithubPRDetail = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) =>
