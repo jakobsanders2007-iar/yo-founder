@@ -305,9 +305,9 @@ function RepoDashboard({ ws, onChangeRepo }: { ws: any; onChangeRepo: () => void
 
       <div className="flex items-center gap-1 border-b border-border -mt-2">
         {([
-          { id: "prs", label: "Pull Requests", icon: GitPullRequest, count: prs?.length },
-          { id: "files", label: "Files", icon: Folder },
-          { id: "activity", label: "Activity", icon: GitCommit },
+          { id: "prs", label: "Pull Requests", icon: GitPullRequest, count: prs?.length as number | undefined },
+          { id: "files", label: "Files", icon: Folder, count: undefined as number | undefined },
+          { id: "activity", label: "Activity", icon: GitCommit, count: undefined as number | undefined },
         ] as const).map((t) => {
           const Icon = t.icon;
           const active = tab === t.id;
