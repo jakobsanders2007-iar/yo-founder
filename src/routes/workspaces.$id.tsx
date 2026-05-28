@@ -416,6 +416,7 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
           const borderColor = m.ai_provider === "claude" ? "#6366f1" : m.ai_provider === "gpt" ? "#10b981" : m.ai_provider === "gemini" ? "#4285F4" : "transparent";
           const providerName = m.ai_provider === "claude" ? "Claude" : m.ai_provider === "gpt" ? "ChatGPT" : m.ai_provider === "gemini" ? "Gemini" : "AI";
           const label = isAi ? `${name}'s ${providerName}` : name;
+          const msgReactions = reactions[m.id] ?? [];
           return (
             <div key={m.id} className="flex gap-3 group">
               <Avatar name={name} color={color} size="sm" />
@@ -434,8 +435,14 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
                   )}
                   style={isAi ? { borderColor } : undefined}
                 >
-                  {m.content}
+                  {renderWithMentions(m.content, memberNames)}
                 </div>
+                <MessageReactionsBar
+                  messageId={m.id}
+                  userId={user.id}
+                  reactions={msgReactions}
+                  membersById={membersById}
+                />
               </div>
               {isMine && (
                 <button
