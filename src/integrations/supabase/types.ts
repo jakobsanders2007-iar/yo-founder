@@ -180,11 +180,15 @@ export type Database = {
           content: string
           created_at: string
           created_by: string
+          files_affected: string[] | null
           github_issue_number: number | null
           github_issue_url: string | null
           id: string
+          next_steps: string[] | null
           status: Database["public"]["Enums"]["prompt_status"]
+          summary: string | null
           title: string
+          vercel_preview_url: string | null
           workspace_id: string
         }
         Insert: {
@@ -192,11 +196,15 @@ export type Database = {
           content: string
           created_at?: string
           created_by: string
+          files_affected?: string[] | null
           github_issue_number?: number | null
           github_issue_url?: string | null
           id?: string
+          next_steps?: string[] | null
           status?: Database["public"]["Enums"]["prompt_status"]
+          summary?: string | null
           title: string
+          vercel_preview_url?: string | null
           workspace_id: string
         }
         Update: {
@@ -204,11 +212,15 @@ export type Database = {
           content?: string
           created_at?: string
           created_by?: string
+          files_affected?: string[] | null
           github_issue_number?: number | null
           github_issue_url?: string | null
           id?: string
+          next_steps?: string[] | null
           status?: Database["public"]["Enums"]["prompt_status"]
+          summary?: string | null
           title?: string
+          vercel_preview_url?: string | null
           workspace_id?: string
         }
         Relationships: [
@@ -408,7 +420,14 @@ export type Database = {
     Enums: {
       ai_provider: "claude" | "gpt" | "gemini"
       member_role: "owner" | "cofounder"
-      prompt_status: "draft" | "sent" | "ready" | "pushed" | "reading"
+      prompt_status:
+        | "draft"
+        | "sent"
+        | "ready"
+        | "pushed"
+        | "reading"
+        | "pr_opened"
+        | "deployed"
       sender_type: "human" | "ai"
     }
     CompositeTypes: {
@@ -539,7 +558,15 @@ export const Constants = {
     Enums: {
       ai_provider: ["claude", "gpt", "gemini"],
       member_role: ["owner", "cofounder"],
-      prompt_status: ["draft", "sent", "ready", "pushed", "reading"],
+      prompt_status: [
+        "draft",
+        "sent",
+        "ready",
+        "pushed",
+        "reading",
+        "pr_opened",
+        "deployed",
+      ],
       sender_type: ["human", "ai"],
     },
   },

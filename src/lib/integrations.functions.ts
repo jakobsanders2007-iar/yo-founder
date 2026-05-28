@@ -1122,10 +1122,17 @@ Only include files you actually changed. Return valid JSON only, no explanation,
         });
 
         await supabase.from("prompts").update({
-          status: "pushed",
+          status: "pr_opened",
           github_issue_url: pr.html_url,
           github_issue_number: pr.number,
           claude_code_job_id: job.id,
+          files_affected: changes.map((c) => c.path).filter(Boolean),
+          summary: `Updated ${changes.length} file${changes.length === 1 ? "" : "s"} based on your request.`,
+          next_steps: [
+            "Review the changes in the Diff tab",
+            "Preview them live once the deployment is ready",
+            "Approve to push the update to your codebase",
+          ],
         }).eq("id", prompt.id);
       } catch (e: any) {
         await fail(e?.message ?? "Something went wrong");
@@ -1138,3 +1145,167 @@ Only include files you actually changed. Return valid JSON only, no explanation,
     return { jobId: job.id as string, branch };
   });
 
+
+/* =====================================================
+   CODE TAB: repo tree, file content, PR close, vercel preview
+   ===================================================== */
+
+export const getRepoTree = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({ workspaceId: z.string().uuid() }).parse(input)
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+    const ws = await getWorkspace(supabase, data.workspaceId);
+    if (!ws.github_repo) throw new Error("No repo connected");
+    const token = await getUserGithubToken(supabase, userId, data.workspaceId);
+    const branch = ws.github_branch || "main";
+    const refJ = await ghFetch(token, `/repos/${ws.github_repo}/git/ref/heads/${encodeURIComponent(branch)}`);
+    const sha = refJ?.object?.sha;
+    if (!sha) throw new Error("Branch not found");
+    const tree = await ghFetch(token, `/repos/${ws.github_repo}/git/trees/${sha}?recursive=1`);
+    const nodes = (tree?.tree ?? []).map((n: any) => ({
+      path: n.path as string,
+      type: n.type as "blob" | "tree",
+      size: n.size ?? null,
+    }));
+    return { branch, nodes };
+  });
+
+export const getRepoFile = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({
+      workspaceId: z.string().uuid(),
+      path: z.string().min(1).max(500),
+    }).parse(input)
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+    const ws = await getWorkspace(supabase, data.workspaceId);
+    if (!ws.github_repo) throw new Error("No repo connected");
+    const token = await getUserGithubToken(supabase, userId, data.workspaceId);
+    const branch = ws.github_branch || "main";
+    const j = await ghFetch(
+      token,
+      `/repos/${ws.github_repo}/contents/${encodeURIComponent(data.path).replace(/%2F/g, "/")}?ref=${encodeURIComponent(branch)}`
+    );
+    if (j.encoding !== "base64") return { path: data.path, content: "", lines: 0, size: j.size ?? 0 };
+    const content = b64decode((j.content || "").replace(/\n/g, ""));
+    return {
+      path: data.path,
+      content,
+      lines: content.split("\n").length,
+      size: j.size ?? content.length,
+    };
+  });
+
+export const closeGithubPR = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({
+      workspaceId: z.string().uuid(),
+      promptId: z.string().uuid(),
+      prNumber: z.number().int().min(1).max(1_000_000),
+    }).parse(input)
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+    const ws = await getWorkspace(supabase, data.workspaceId);
+    if (!ws.github_repo) throw new Error("No repo connected");
+    const token = await getUserGithubToken(supabase, userId, data.workspaceId);
+    const res = await fetchWithTimeout(
+      `https://api.github.com/repos/${ws.github_repo}/pulls/${data.prNumber}`,
+      {
+        method: "PATCH",
+        headers: { ...ghHeaders(token), "content-type": "application/json" },
+        body: JSON.stringify({ state: "closed" }),
+      }
+    );
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error(`GitHub ${res.status}: ${t.slice(0, 200)}`);
+    }
+    await supabase
+      .from("prompts")
+      .update({ status: "draft", github_issue_url: null, github_issue_number: null })
+      .eq("id", data.promptId);
+    return { ok: true };
+  });
+
+export const approveAndPushPR = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({
+      workspaceId: z.string().uuid(),
+      promptId: z.string().uuid(),
+      prNumber: z.number().int().min(1).max(1_000_000),
+    }).parse(input)
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+    const ws = await getWorkspace(supabase, data.workspaceId);
+    if (!ws.github_repo) throw new Error("No repo connected");
+    const token = await getUserGithubToken(supabase, userId, data.workspaceId);
+    const res = await fetchWithTimeout(
+      `https://api.github.com/repos/${ws.github_repo}/pulls/${data.prNumber}/merge`,
+      { method: "PUT", headers: { ...ghHeaders(token), "content-type": "application/json" }, body: JSON.stringify({ merge_method: "squash" }) }
+    );
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error(`GitHub ${res.status}: ${t.slice(0, 200)}`);
+    }
+    const j = await res.json();
+
+    // Try to fetch a fresh Vercel preview URL (non-blocking — best effort)
+    let previewUrl: string | null = null;
+    try {
+      if (ws.vercel_token && ws.vercel_project_id) {
+        const vj = await vercelGet(
+          ws.vercel_token,
+          `/v6/deployments?projectId=${encodeURIComponent(ws.vercel_project_id)}&limit=1`
+        );
+        const d = vj.deployments?.[0];
+        if (d?.url) previewUrl = `https://${d.url}`;
+      }
+    } catch {
+      // ignore — preview fetch is best-effort
+    }
+
+    await supabase
+      .from("prompts")
+      .update({
+        status: "deployed",
+        vercel_preview_url: previewUrl,
+      })
+      .eq("id", data.promptId);
+
+    return { merged: !!j.merged, sha: j.sha ?? null, previewUrl };
+  });
+
+export const fetchVercelPreview = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({
+      workspaceId: z.string().uuid(),
+      promptId: z.string().uuid(),
+    }).parse(input)
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase } = context as any;
+    const ws = await getWorkspace(supabase, data.workspaceId);
+    if (!ws.vercel_token || !ws.vercel_project_id) {
+      return { url: null as string | null, configured: false };
+    }
+    const j = await vercelGet(
+      ws.vercel_token,
+      `/v6/deployments?projectId=${encodeURIComponent(ws.vercel_project_id)}&limit=1`
+    );
+    const d = j.deployments?.[0];
+    const url = d?.url ? `https://${d.url}` : null;
+    if (url) {
+      await supabase.from("prompts").update({ vercel_preview_url: url }).eq("id", data.promptId);
+    }
+    return { url, configured: true };
+  });
