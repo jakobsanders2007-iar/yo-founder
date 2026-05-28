@@ -312,13 +312,13 @@ export const generatePrompt = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context as any;
-    const { data: me } = await supabase
-      .from("profiles")
-      .select("anthropic_key, openai_key, gemini_key, ai_provider, display_name")
-      .eq("id", userId)
-      .single();
+    const [{ data: prof }, { data: sec }] = await Promise.all([
+      supabase.from("profiles").select("ai_provider, display_name").eq("id", userId).single(),
+      supabase.from("profile_secrets").select("anthropic_key, openai_key, gemini_key").eq("user_id", userId).maybeSingle(),
+    ]);
+    const me = { ...(prof ?? {}), ...(sec ?? {}) } as any;
 
-    let sel = keyForProvider(me ?? {});
+    let sel = keyForProvider(me);
     if (!sel) {
       // any provider key on profile, or gemini server key
       if (me?.anthropic_key) sel = { provider: "claude", key: me.anthropic_key };
@@ -376,15 +376,15 @@ export const createGithubIssue = createServerFn({ method: "POST" })
       .single();
     if (!ws) throw new Error("Workspace not found");
 
-    const { data: meProf } = await supabase
-      .from("profiles").select("github_token").eq("id", userId).single();
-    let token: string | null = meProf?.github_token ?? null;
+    const { data: meSec } = await supabase
+      .from("profile_secrets").select("github_token").eq("user_id", userId).maybeSingle();
+    let token: string | null = meSec?.github_token ?? null;
     if (!token) {
-      const { data: ownerProf } = await supabase
-        .from("profiles").select("github_token").eq("id", ws.created_by).single();
-      token = ownerProf?.github_token ?? null;
+      const { data: ownerSec } = await supabase
+        .from("profile_secrets").select("github_token").eq("user_id", ws.created_by).maybeSingle();
+      token = ownerSec?.github_token ?? null;
     }
-    if (!token) throw new Error("No GitHub token available. Set one in onboarding.");
+    if (!token) throw new Error("No GitHub token available. Set one in Settings → GitHub.");
 
     const { data: prompt } = await supabase
       .from("prompts").select("title, content").eq("id", data.promptId).single();
@@ -431,17 +431,25 @@ export const saveAiKey = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context as any;
-    const payload: any = { id: userId, ai_provider: data.provider };
-    if (data.provider === "claude") {
+
+    // 1) Set provider on profile
+    const { error: profErr } = await supabase
+      .from("profiles")
+      .upsert({ id: userId, ai_provider: data.provider }, { onConflict: "id" });
+    if (profErr) throw new Error(profErr.message);
+
+    // 2) Store key in profile_secrets (keys live in a separate table)
+    if (data.provider === "claude" || data.provider === "gpt") {
       if (!data.apiKey || data.apiKey.length < 10) throw new Error("Missing key");
-      payload.anthropic_key = data.apiKey;
-    } else if (data.provider === "gpt") {
-      if (!data.apiKey || data.apiKey.length < 10) throw new Error("Missing key");
-      payload.openai_key = data.apiKey;
+      const secretPayload: any = { user_id: userId, updated_at: new Date().toISOString() };
+      if (data.provider === "claude") secretPayload.anthropic_key = data.apiKey;
+      if (data.provider === "gpt") secretPayload.openai_key = data.apiKey;
+      const { error: secErr } = await supabase
+        .from("profile_secrets")
+        .upsert(secretPayload, { onConflict: "user_id" });
+      if (secErr) throw new Error(secErr.message);
     }
-    // gemini: no user key needed, server uses GEMINI_API_KEY
-    const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "id" });
-    if (error) throw new Error(error.message);
+    // gemini: server uses GEMINI_API_KEY, no user key needed
     return { ok: true };
   });
 
@@ -452,12 +460,18 @@ export const saveGithubToken = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context as any;
-    const { error } = await supabase.from("profiles")
+    const { error: profErr } = await supabase.from("profiles")
       .upsert(
-        { id: userId, github_token: data.token, github_username: data.login, onboarded: true },
+        { id: userId, github_username: data.login, onboarded: true },
         { onConflict: "id" }
       );
-    if (error) throw new Error(error.message);
+    if (profErr) throw new Error(profErr.message);
+    const { error: secErr } = await supabase.from("profile_secrets")
+      .upsert(
+        { user_id: userId, github_token: data.token, updated_at: new Date().toISOString() },
+        { onConflict: "user_id" }
+      );
+    if (secErr) throw new Error(secErr.message);
     return { ok: true };
   });
 
