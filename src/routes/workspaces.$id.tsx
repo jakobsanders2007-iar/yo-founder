@@ -141,7 +141,20 @@ function InviteModal({ workspaceId, workspaceName, onClose }: { workspaceId: str
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ link: string; emailed: boolean; reason?: string } | null>(null);
+  const [pending, setPending] = useState<any[]>([]);
   const invite = useServerFn(sendInvite);
+
+  const loadPending = useCallback(async () => {
+    const { data } = await supabase
+      .from("workspace_invites")
+      .select("id, email, accepted, created_at, token")
+      .eq("workspace_id", workspaceId)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    setPending(data ?? []);
+  }, [workspaceId]);
+
+  useEffect(() => { loadPending(); }, [loadPending]);
 
   const submit = async () => {
     if (!email.trim()) return;
@@ -151,6 +164,7 @@ function InviteModal({ workspaceId, workspaceName, onClose }: { workspaceId: str
       setResult({ link: r.link, emailed: r.emailed, reason: r.reason });
       if (r.emailed) toast.success(`Invite sent to ${email.trim()}`);
       else toast.message("Invite created — share the link", { description: r.reason });
+      loadPending();
     } catch (e: any) {
       toast.error(e?.message ?? "Failed to send invite");
     } finally {
@@ -158,9 +172,15 @@ function InviteModal({ workspaceId, workspaceName, onClose }: { workspaceId: str
     }
   };
 
+  const copyLink = (token: string) => {
+    const link = `${window.location.origin}/invite/${token}`;
+    navigator.clipboard.writeText(link);
+    toast.success("Link copied");
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center px-4" onClick={onClose}>
-      <div className="bg-surface border border-border rounded-lg p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-surface border border-border rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Invite a co-founder to {workspaceName}</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
@@ -170,15 +190,14 @@ function InviteModal({ workspaceId, workspaceName, onClose }: { workspaceId: str
             <p className="text-sm text-muted-foreground mb-4">
               They'll get an email with a link to join. Up to 8 members per workspace.
             </p>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-              placeholder="cofounder@example.com" autoFocus
-              onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
-              className="w-full bg-background border border-border rounded px-3 py-2 text-sm mb-4 focus:outline-none focus:border-brand" />
-            <div className="flex justify-end gap-2">
-              <button onClick={onClose} className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground">Cancel</button>
+            <div className="flex gap-2 mb-4">
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                placeholder="cofounder@example.com" autoFocus
+                onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+                className="flex-1 bg-background border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-brand" />
               <button onClick={submit} disabled={busy || !email.trim()}
                 className="px-4 py-2 bg-brand text-primary-foreground rounded text-sm font-medium hover:opacity-90 disabled:opacity-50">
-                {busy ? "Sending..." : "Send Invite"}
+                {busy ? "..." : "Send"}
               </button>
             </div>
           </>
@@ -194,11 +213,32 @@ function InviteModal({ workspaceId, workspaceName, onClose }: { workspaceId: str
               <button onClick={() => { navigator.clipboard.writeText(result.link); toast.success("Copied"); }}
                 className="px-3 py-2 bg-background border border-border rounded text-xs hover:border-brand"><Copy className="h-3.5 w-3.5" /></button>
             </div>
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-end gap-2 mb-4">
               <button onClick={() => { setResult(null); setEmail(""); }} className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground">Invite another</button>
-              <button onClick={onClose} className="px-4 py-2 bg-brand text-primary-foreground rounded text-sm font-medium hover:opacity-90">Done</button>
             </div>
           </>
+        )}
+
+        {pending.length > 0 && (
+          <div className="border-t border-border pt-4">
+            <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Invites</h3>
+            <ul className="space-y-2">
+              {pending.map((inv) => (
+                <li key={inv.id} className="flex items-center gap-2 text-sm">
+                  <span className="flex-1 truncate">{inv.email}</span>
+                  {inv.accepted ? (
+                    <span className="text-[10px] uppercase tracking-wide text-success font-medium px-2 py-0.5 rounded bg-success/10">Joined</span>
+                  ) : (
+                    <>
+                      <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium px-2 py-0.5 rounded bg-background border border-border">Pending</span>
+                      <button onClick={() => copyLink(inv.token)} title="Copy invite link"
+                        className="text-muted-foreground hover:text-foreground"><Copy className="h-3.5 w-3.5" /></button>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </div>
     </div>
