@@ -242,7 +242,7 @@ async function respondForUser(opts: {
 
   let text: string;
   try {
-    text = await callProvider(sel.provider, sel.key, SYSTEM_PROMPT, formatted, CHAT_TOKENS);
+    text = await callProvider(sel.provider, sel.key, buildSystemPrompt(profile.display_name || "the founder"), formatted, CHAT_TOKENS);
   } catch (e: any) {
     await supabase.from("messages").insert({
       workspace_id: workspaceId,
