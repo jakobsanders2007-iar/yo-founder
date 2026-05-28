@@ -126,6 +126,7 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
   const [text, setText] = useState("");
   const [typing, setTyping] = useState<{ name: string; provider: string; color: string } | null>(null);
   const [sending, setSending] = useState(false);
+  const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [showGenModal, setShowGenModal] = useState(false);
   const [genResult, setGenResult] = useState<{ title: string; content: string } | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -134,6 +135,7 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const respondSender = useServerFn(respondAsSenderAi);
+  const respondCofounder = useServerFn(respondAsCofounderAi);
   const genPrompt = useServerFn(generatePrompt);
 
   const membersById = useMemo(() => {
