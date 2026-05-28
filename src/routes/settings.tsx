@@ -38,24 +38,30 @@ function SettingsPage() {
     if (loading) return;
     if (!user) { navigate({ to: "/login" }); return; }
     (async () => {
-      const { data } = await supabase.from("profiles")
-        .select("display_name, avatar_color, ai_provider, github_username, anthropic_key, openai_key, gemini_key, github_token")
-        .eq("id", user.id).single();
-      if (data) {
+      const [{ data: prof }, { data: sec }] = await Promise.all([
+        supabase.from("profiles")
+          .select("display_name, avatar_color, ai_provider, github_username")
+          .eq("id", user.id).single(),
+        supabase.from("profile_secrets")
+          .select("anthropic_key, openai_key, gemini_key, github_token")
+          .eq("user_id", user.id).maybeSingle(),
+      ]);
+      if (prof) {
         setProfile({
-          display_name: data.display_name,
-          avatar_color: data.avatar_color,
-          ai_provider: data.ai_provider,
-          github_username: data.github_username,
-          has_anthropic: !!data.anthropic_key,
-          has_openai: !!data.openai_key,
-          has_gemini: !!data.gemini_key,
-          has_github: !!data.github_token,
+          display_name: prof.display_name,
+          avatar_color: prof.avatar_color,
+          ai_provider: prof.ai_provider,
+          github_username: prof.github_username,
+          has_anthropic: !!sec?.anthropic_key,
+          has_openai: !!sec?.openai_key,
+          has_gemini: !!sec?.gemini_key,
+          has_github: !!sec?.github_token,
         });
-        setName(data.display_name ?? "");
-        setColor(data.avatar_color ?? COLORS[0]);
-        if (data.ai_provider) setProvider(data.ai_provider as any);
+        setName(prof.display_name ?? "");
+        setColor(prof.avatar_color ?? COLORS[0]);
+        if (prof.ai_provider) setProvider(prof.ai_provider as any);
       }
+
     })();
   }, [user, loading, navigate]);
 
