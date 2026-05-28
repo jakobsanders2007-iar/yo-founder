@@ -883,6 +883,13 @@ function CodeTab({ ws, workspaceId, user }: any) {
         onApprove={onApprove}
       />
 
+      <DraftsBar
+        prompts={prompts}
+        selectedId={selected?.id}
+        onSelect={(p) => { setSelected(p); setPromptText(p.content ?? ""); }}
+        onNew={() => startNewPrompt("")}
+      />
+
       <SubTabBar value={subTab} onChange={setSubTab} />
 
       <div className="flex-1 min-h-0 overflow-hidden">
