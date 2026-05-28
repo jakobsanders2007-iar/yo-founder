@@ -20,18 +20,15 @@ function SettingsPage() {
   const { user, loading } = useAuth();
   const [profile, setProfile] = useState<any>(null);
 
-  // AI
   const [provider, setProvider] = useState<"claude" | "gpt" | "gemini">("claude");
   const [aiKey, setAiKey] = useState("");
   const [showAi, setShowAi] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiState, setAiState] = useState<{ ok: boolean; msg: string } | null>(null);
 
-  // Profile
   const [name, setName] = useState("");
   const [color, setColor] = useState(COLORS[0]);
   const [profBusy, setProfBusy] = useState(false);
-
   const [ghBusy, setGhBusy] = useState(false);
 
   const testAi = useServerFn(testAiKey);
@@ -45,7 +42,7 @@ function SettingsPage() {
         .select("display_name, avatar_color, ai_provider, github_username, anthropic_key, openai_key, gemini_key, github_token")
         .eq("id", user.id).single();
       if (data) {
-        const p = {
+        setProfile({
           display_name: data.display_name,
           avatar_color: data.avatar_color,
           ai_provider: data.ai_provider,
@@ -54,40 +51,21 @@ function SettingsPage() {
           has_openai: !!data.openai_key,
           has_gemini: !!data.gemini_key,
           has_github: !!data.github_token,
-        };
-        setProfile(p);
+        });
         setName(data.display_name ?? "");
         setColor(data.avatar_color ?? COLORS[0]);
         if (data.ai_provider) setProvider(data.ai_provider as any);
       }
-      const { data: ws } = await supabase.from("workspaces")
-        .select("id, name, github_repo")
-        .order("created_at", { ascending: true });
-      if (ws) {
-        setWorkspaces(ws as any);
-        setRepoEdits(Object.fromEntries(ws.map((w: any) => [w.id, w.github_repo ?? ""])));
-      }
     })();
   }, [user, loading, navigate]);
 
-  const handleRepoSave = async (id: string) => {
-    const val = (repoEdits[id] ?? "").trim();
-    if (!/^[\w.-]+\/[\w.-]+$/.test(val)) return toast.error("Repo must be in owner/repo format");
-    setRepoBusy(id);
-    const { error } = await supabase.from("workspaces").update({ github_repo: val }).eq("id", id);
-    setRepoBusy(null);
-    if (error) return toast.error(error.message);
-    setWorkspaces((ws) => ws.map((w) => w.id === id ? { ...w, github_repo: val } : w));
-    toast.success("Repo updated");
-  };
-
   const handleAiSave = async () => {
-    if (!aiKey.trim()) return toast.error("Enter an API key");
+    if (!aiKey.trim()) return toast.error("Please add a key first");
     setAiBusy(true); setAiState(null);
     const t = await testAi({ data: { provider, apiKey: aiKey.trim() } });
     if (!t.success) {
       setAiBusy(false);
-      setAiState({ ok: false, msg: t.error });
+      setAiState({ ok: false, msg: "That key didn't work — please double-check it" });
       return;
     }
     await saveAi({ data: { provider, apiKey: aiKey.trim() } });
@@ -101,35 +79,42 @@ function SettingsPage() {
       has_openai: provider === "gpt" ? true : p?.has_openai,
       has_gemini: provider === "gemini" ? true : p?.has_gemini,
     }));
-    toast.success("AI key saved");
+    toast.success("AI saved ✓");
   };
 
-  const handleGhSave = async () => {
-    if (!ghToken.trim()) return toast.error("Enter a token");
-    setGhBusy(true); setGhState(null);
-    const t = await testGh({ data: { token: ghToken.trim() } });
-    if (!t.success) {
+  const connectGithub = async () => {
+    setGhBusy(true);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "github",
+        options: {
+          redirectTo: `${window.location.origin}/settings`,
+          scopes: "repo read:user",
+        },
+      });
+      if (error) throw error;
+    } catch {
+      toast.error("Something went wrong connecting GitHub — please try again");
       setGhBusy(false);
-      setGhState({ ok: false, msg: t.error });
-      return;
     }
-    await saveGh({ data: { token: ghToken.trim(), login: t.login } });
-    setGhBusy(false);
-    setGhToken("");
-    setGhState({ ok: true, msg: `Connected as @${t.login}` });
-    setProfile((p: any) => ({ ...p, github_username: t.login, has_github: true }));
-    toast.success(`GitHub connected as @${t.login}`);
+  };
+
+  const disconnectGithub = async () => {
+    if (!confirm("Disconnect GitHub? You'll need to reconnect to manage your code.")) return;
+    await supabase.from("profiles").update({ github_token: null, github_username: null }).eq("id", user!.id);
+    setProfile((p: any) => ({ ...p, github_username: null, has_github: false }));
+    toast.success("GitHub disconnected");
   };
 
   const handleProfileSave = async () => {
-    if (!name.trim()) return toast.error("Display name required");
+    if (!name.trim()) return toast.error("Please add your name");
     setProfBusy(true);
     const { error } = await supabase.from("profiles")
       .update({ display_name: name.trim(), avatar_color: color })
       .eq("id", user!.id);
     setProfBusy(false);
-    if (error) return toast.error(error.message);
-    toast.success("Profile updated");
+    if (error) return toast.error("Couldn't save — please try again");
+    toast.success("Profile saved ✓");
   };
 
   if (!profile) return <div className="min-h-screen bg-background flex items-center justify-center text-sm text-muted-foreground">Loading...</div>;
@@ -146,6 +131,44 @@ function SettingsPage() {
 
       <main className="max-w-3xl mx-auto px-6 py-10 space-y-6">
         <h1 className="text-2xl font-semibold">Settings</h1>
+
+        {/* GitHub */}
+        <section className="bg-surface border border-border rounded-lg p-6">
+          <h2 className="text-lg font-semibold mb-4 inline-flex items-center gap-2"><Github className="h-5 w-5" /> GitHub</h2>
+          {profile.has_github && profile.github_username ? (
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <img
+                  src={`https://github.com/${profile.github_username}.png?size=80`}
+                  alt={profile.github_username}
+                  className="h-10 w-10 rounded-full border border-border"
+                />
+                <div>
+                  <div className="font-medium">@{profile.github_username}</div>
+                  <div className="text-xs text-success inline-flex items-center gap-1"><Check className="h-3 w-3" /> Connected</div>
+                </div>
+              </div>
+              <button
+                onClick={disconnectGithub}
+                className="text-xs border border-border rounded px-3 py-1.5 hover:border-error hover:text-error"
+              >
+                Disconnect
+              </button>
+            </div>
+          ) : (
+            <div>
+              <p className="text-sm text-muted-foreground mb-4">Connect your GitHub to manage your code.</p>
+              <button
+                onClick={connectGithub}
+                disabled={ghBusy}
+                className="bg-brand text-primary-foreground font-semibold px-5 py-2.5 rounded-lg text-sm hover:opacity-90 disabled:opacity-50 inline-flex items-center gap-2"
+              >
+                <Github className="h-4 w-4" />
+                {ghBusy ? "Connecting..." : "Connect GitHub"}
+              </button>
+            </div>
+          )}
+        </section>
 
         {/* AI Provider */}
         <section className="bg-surface border border-border rounded-lg p-6">
@@ -196,9 +219,9 @@ function SettingsPage() {
           </div>
           {provider === "gemini" && (
             <p className="mt-2 text-xs text-muted-foreground">
-              Get your free key at aistudio.google.com.{" "}
+              Get your free key at{" "}
               <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-brand hover:underline">
-                Get my free Gemini key →
+                aistudio.google.com →
               </a>
             </p>
           )}
@@ -207,78 +230,10 @@ function SettingsPage() {
               className="bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50">
               {aiBusy ? "Testing..." : "Test & Save"}
             </button>
-            {aiState?.ok && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {provider === "gemini" ? "Gemini connected ✓" : aiState.msg}</span>}
+            {aiState?.ok && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {aiState.msg}</span>}
             {aiState && !aiState.ok && <span className="text-error text-sm flex items-center gap-1"><X className="h-4 w-4" /> {aiState.msg}</span>}
           </div>
         </section>
-
-        {/* GitHub */}
-        <section className="bg-surface border border-border rounded-lg p-6">
-          <h2 className="text-lg font-semibold mb-1">GitHub</h2>
-          <p className="text-sm text-muted-foreground mb-4">
-            {profile.github_username
-              ? <>Connected as <span className="text-foreground font-medium">@{profile.github_username}</span>
-                  <span className="ml-2 inline-flex items-center gap-1 text-success text-xs"><Check className="h-3.5 w-3.5" /> Connected</span>
-                </>
-              : "Not connected"}
-          </p>
-          <label className="text-xs text-muted-foreground">Personal Access Token</label>
-          <div className="mt-1 relative">
-            <input
-              type={showGh ? "text" : "password"}
-              value={ghToken}
-              onChange={(e) => { setGhToken(e.target.value); setGhState(null); }}
-              className="w-full bg-background border border-border rounded px-3 py-2 pr-10 text-sm font-mono focus:outline-none focus:border-brand"
-              placeholder="ghp_..."
-            />
-            <button type="button" onClick={() => setShowGh((s) => !s)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-              {showGh ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Needs <code>repo</code> scope. Create one at github.com/settings/tokens
-          </p>
-          <div className="mt-3 flex items-center gap-3">
-            <button onClick={handleGhSave} disabled={ghBusy || !ghToken.trim()}
-              className="bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50">
-              {ghBusy ? "Testing..." : "Test & Save"}
-            </button>
-            {ghState?.ok && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {ghState.msg}</span>}
-            {ghState && !ghState.ok && <span className="text-error text-sm flex items-center gap-1"><X className="h-4 w-4" /> {ghState.msg}</span>}
-          </div>
-
-          <div className="mt-6 pt-6 border-t border-border">
-            <h3 className="text-sm font-semibold mb-1">Workspace repositories</h3>
-            <p className="text-xs text-muted-foreground mb-3">One GitHub repo per workspace, in <code>owner/repo</code> format.</p>
-            {workspaces.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No workspaces yet.</p>
-            ) : (
-              <div className="space-y-3">
-                {workspaces.map((w) => (
-                  <div key={w.id}>
-                    <label className="text-xs text-muted-foreground">{w.name}</label>
-                    <div className="mt-1 flex gap-2">
-                      <input
-                        value={repoEdits[w.id] ?? ""}
-                        onChange={(e) => setRepoEdits((r) => ({ ...r, [w.id]: e.target.value }))}
-                        placeholder="owner/repo"
-                        className="flex-1 bg-background border border-border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand"
-                      />
-                      <button
-                        onClick={() => handleRepoSave(w.id)}
-                        disabled={repoBusy === w.id || (repoEdits[w.id] ?? "").trim() === (w.github_repo ?? "")}
-                        className="bg-brand text-primary-foreground font-medium px-3 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50">
-                        {repoBusy === w.id ? "..." : "Save"}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
-
 
         {/* Profile */}
         <section className="bg-surface border border-border rounded-lg p-6">
