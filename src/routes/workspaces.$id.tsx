@@ -1002,6 +1002,50 @@ function CodeTopBar({ ws, status, canApprove, onApprove }: any) {
   );
 }
 
+/* ---------- Drafts bar (horizontal scroll, mobile-friendly) ---------- */
+function DraftsBar({ prompts, selectedId, onSelect, onNew }: {
+  prompts: any[]; selectedId?: string; onSelect: (p: any) => void; onNew: () => void;
+}) {
+  const recent = prompts.slice(0, 20);
+  return (
+    <div className="border-b border-[#1e1e1e] bg-[#0a0a0a] px-2 py-2 flex items-center gap-2 overflow-x-auto scrollbar-thin shrink-0">
+      <button
+        onClick={onNew}
+        className="shrink-0 inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded border border-amber-500/40 text-amber-400 hover:bg-amber-500/10 transition"
+      >
+        <Plus className="h-3 w-3" /> New
+      </button>
+      {recent.length === 0 ? (
+        <span className="text-xs text-muted-foreground px-1">No drafts yet</span>
+      ) : (
+        recent.map((p) => {
+          const active = p.id === selectedId;
+          const isDraft = p.status === "draft";
+          return (
+            <button
+              key={p.id}
+              onClick={() => onSelect(p)}
+              className={cn(
+                "shrink-0 inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border transition max-w-[180px]",
+                active
+                  ? "border-amber-500/60 bg-amber-500/10 text-foreground"
+                  : "border-[#1e1e1e] bg-[#111] text-muted-foreground hover:text-foreground hover:border-[#2a2a2a]"
+              )}
+              title={p.title}
+            >
+              <span className={cn(
+                "h-1.5 w-1.5 rounded-full shrink-0",
+                isDraft ? "bg-muted-foreground" : p.status === "pr_opened" ? "bg-amber-500" : p.status === "deployed" ? "bg-emerald-500" : "bg-blue-500"
+              )} />
+              <span className="truncate">{p.title || "Untitled"}</span>
+            </button>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 /* ---------- Sub-tab bar ---------- */
 function SubTabBar({ value, onChange }: { value: SubTab; onChange: (v: SubTab) => void }) {
   const items: { key: SubTab; label: string; icon: any }[] = [
