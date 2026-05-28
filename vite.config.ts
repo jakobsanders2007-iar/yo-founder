@@ -6,10 +6,17 @@
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
+// Vercel sets VERCEL=1 during builds. When deploying to Vercel, force the
+// Nitro "vercel" preset so the server bundle is emitted to .vercel/output/
+// (Build Output API v3) — Vercel auto-detects it. In the Lovable sandbox
+// this stays undefined and the wrapper's default behavior kicks in.
+const isVercelBuild = !!process.env.VERCEL;
+
 export default defineConfig({
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  ...(isVercelBuild ? { nitro: { preset: "vercel" } } : {}),
 });
