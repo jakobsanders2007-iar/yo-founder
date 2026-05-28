@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/Card";
-import { ExternalLink, Check, RefreshCw, GitPullRequest, GitCommit, AlertCircle, ChevronDown, ChevronRight, X, Github } from "lucide-react";
+import { ExternalLink, Check, RefreshCw, GitPullRequest, GitCommit, AlertCircle, ChevronDown, ChevronRight, X, Github, Folder, FileText } from "lucide-react";
 import { toast } from "sonner";
 import {
   saveWorkspaceRepo,
@@ -12,6 +12,7 @@ import {
   getGithubPRDetail,
   getGithubCommits,
   mergeGithubPR,
+  listGithubRepoFiles,
 } from "@/lib/integrations.functions";
 import { useAuth } from "@/lib/auth";
 
@@ -166,13 +167,17 @@ export function GithubTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void 
   return <RepoDashboard ws={ws} onChangeRepo={() => { setRepos(null); setShowRepoPicker(true); fetchRepos(); }} />;
 }
 
+type SubTab = "prs" | "files" | "activity";
+
 function RepoDashboard({ ws, onChangeRepo }: { ws: any; onChangeRepo: () => void }) {
   const getInfo = useServerFn(getGithubRepoInfo);
   const getPRs = useServerFn(getGithubPRs);
   const getPRDetail = useServerFn(getGithubPRDetail);
   const getCommits = useServerFn(getGithubCommits);
   const mergePR = useServerFn(mergeGithubPR);
+  const listFiles = useServerFn(listGithubRepoFiles);
 
+  const [tab, setTab] = useState<SubTab>("prs");
   const [info, setInfo] = useState<any>(null);
   const [prs, setPrs] = useState<any[] | null>(null);
   const [commits, setCommits] = useState<any[] | null>(null);
@@ -180,10 +185,15 @@ function RepoDashboard({ ws, onChangeRepo }: { ws: any; onChangeRepo: () => void
   const [refreshing, setRefreshing] = useState(false);
   const [merging, setMerging] = useState<number | null>(null);
   const [confirmMerge, setConfirmMerge] = useState<any>(null);
-  const [showCommits, setShowCommits] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [details, setDetails] = useState<Record<number, any>>({});
   const [loadingDetail, setLoadingDetail] = useState<number | null>(null);
+
+  // Files browser state
+  const [filePath, setFilePath] = useState<string>("");
+  const [fileEntries, setFileEntries] = useState<any[] | null>(null);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [filesError, setFilesError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -209,6 +219,25 @@ function RepoDashboard({ ws, onChangeRepo }: { ws: any; onChangeRepo: () => void
     const id = setInterval(load, 60_000);
     return () => clearInterval(id);
   }, [load]);
+
+  const loadFiles = useCallback(async (path: string) => {
+    setFilesLoading(true);
+    setFilesError(null);
+    try {
+      const r = await listFiles({ data: { workspaceId: ws.id, path } });
+      setFileEntries(r.entries);
+      setFilePath(r.path);
+    } catch {
+      setFilesError("Couldn't load files — try again");
+      setFileEntries([]);
+    } finally {
+      setFilesLoading(false);
+    }
+  }, [listFiles, ws.id]);
+
+  useEffect(() => {
+    if (tab === "files" && fileEntries === null) loadFiles("");
+  }, [tab, fileEntries, loadFiles]);
 
   const toggleDiff = async (num: number) => {
     if (expanded === num) { setExpanded(null); return; }
@@ -274,114 +303,212 @@ function RepoDashboard({ ws, onChangeRepo }: { ws: any; onChangeRepo: () => void
         </div>
       )}
 
-      <div>
-        <h2 className="text-sm uppercase tracking-wide text-muted-foreground mb-3 inline-flex items-center gap-2">
-          <GitPullRequest className="h-4 w-4" /> Open change requests{prs ? ` (${prs.length})` : ""}
-        </h2>
-        {prs === null ? (
-          <div className="text-sm text-muted-foreground">Loading…</div>
-        ) : prs.length === 0 ? (
-          <div className="border border-border rounded-lg bg-surface p-10 text-center">
-            <GitPullRequest className="h-10 w-10 mx-auto mb-3 text-muted-foreground/50" />
-            <div className="text-base font-medium">No changes waiting for review 🎉</div>
-            <div className="text-sm text-muted-foreground mt-1">
-              When new changes are ready, they'll show up here
+      <div className="flex items-center gap-1 border-b border-border -mt-2">
+        {([
+          { id: "prs", label: "Pull Requests", icon: GitPullRequest, count: prs?.length as number | undefined },
+          { id: "files", label: "Files", icon: Folder, count: undefined as number | undefined },
+          { id: "activity", label: "Activity", icon: GitCommit, count: undefined as number | undefined },
+        ] as const).map((t) => {
+          const Icon = t.icon;
+          const active = tab === t.id;
+          return (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`px-3 py-2 text-sm inline-flex items-center gap-1.5 border-b-2 -mb-px transition ${
+                active ? "border-brand text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {t.label}
+              {t.count != null && <span className="text-xs text-muted-foreground">({t.count})</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === "prs" && (
+        <div>
+          {prs === null ? (
+            <div className="text-sm text-muted-foreground">Loading…</div>
+          ) : prs.length === 0 ? (
+            <div className="border border-border rounded-lg bg-surface p-10 text-center">
+              <GitPullRequest className="h-10 w-10 mx-auto mb-3 text-muted-foreground/50" />
+              <div className="text-base font-medium">No changes waiting for review 🎉</div>
+              <div className="text-sm text-muted-foreground mt-1">
+                When new changes are ready, they'll show up here
+              </div>
+            </div>
+          ) : (
+            <ul className="space-y-3">
+              {prs.map((p) => (
+                <li key={p.number} className="border border-border rounded-lg bg-surface overflow-hidden">
+                  <div className="p-4">
+                    <div className="flex items-start gap-3">
+                      <GitPullRequest className="h-4 w-4 text-success mt-1 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium">#{p.number} {p.title}</div>
+                        <div className="text-xs text-muted-foreground mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span>by <span className="font-mono">{p.author}</span></span>
+                          <span>·</span>
+                          <span>{timeAgo(p.created_at)}</span>
+                          {p.changed_files != null && <><span>·</span><span>{p.changed_files} files</span></>}
+                        </div>
+                      </div>
+                      <div className="flex gap-1.5 shrink-0">
+                        <button onClick={() => toggleDiff(p.number)}
+                          className="text-xs border border-border rounded px-2 py-1 hover:border-foreground inline-flex items-center gap-1">
+                          {expanded === p.number ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                          View changes
+                        </button>
+                        <a href={p.html_url} target="_blank" rel="noreferrer"
+                          className="text-xs border border-border rounded px-2 py-1 hover:border-foreground inline-flex items-center gap-1">
+                          Open <ExternalLink className="h-3 w-3" />
+                        </a>
+                        <button onClick={() => setConfirmMerge(p)} disabled={merging === p.number}
+                          className="text-xs bg-brand text-primary-foreground rounded px-2 py-1 hover:opacity-90 disabled:opacity-50">
+                          {merging === p.number ? "Approving…" : "Approve change"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {expanded === p.number && (
+                    <div className="border-t border-border bg-background/50">
+                      {loadingDetail === p.number ? (
+                        <div className="p-4 text-sm text-muted-foreground">Loading changes…</div>
+                      ) : details[p.number] ? (
+                        <div className="p-4 space-y-3">
+                          {details[p.number].body && (
+                            <div className="text-xs text-muted-foreground whitespace-pre-wrap mb-3 max-h-40 overflow-y-auto scrollbar-thin">
+                              {details[p.number].body.slice(0, 500)}
+                            </div>
+                          )}
+                          {details[p.number].files.length === 0 ? (
+                            <div className="text-xs text-muted-foreground">No file changes</div>
+                          ) : details[p.number].files.map((f: any) => (
+                            <FileDiff key={f.filename} file={f} />
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {tab === "files" && (
+        <div className="border border-border rounded-lg bg-surface overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-2 border-b border-border text-xs">
+            <button
+              onClick={() => loadFiles("")}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              {ws.github_repo}
+            </button>
+            {filePath.split("/").filter(Boolean).map((seg, i, arr) => {
+              const sub = arr.slice(0, i + 1).join("/");
+              return (
+                <span key={sub} className="inline-flex items-center gap-2">
+                  <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                  <button
+                    onClick={() => loadFiles(sub)}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    {seg}
+                  </button>
+                </span>
+              );
+            })}
+            <div className="ml-auto">
+              <button
+                onClick={() => loadFiles(filePath)}
+                disabled={filesLoading}
+                className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+              >
+                <RefreshCw className={`h-3 w-3 ${filesLoading ? "animate-spin" : ""}`} /> Refresh
+              </button>
             </div>
           </div>
-        ) : (
-          <ul className="space-y-3">
-            {prs.map((p) => (
-              <li key={p.number} className="border border-border rounded-lg bg-surface overflow-hidden">
-                <div className="p-4">
-                  <div className="flex items-start gap-3">
-                    <GitPullRequest className="h-4 w-4 text-success mt-1 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium">#{p.number} {p.title}</div>
-                      <div className="text-xs text-muted-foreground mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span>by <span className="font-mono">{p.author}</span></span>
-                        <span>·</span>
-                        <span>{timeAgo(p.created_at)}</span>
-                        {p.changed_files != null && <><span>·</span><span>{p.changed_files} files</span></>}
-                      </div>
-                    </div>
-                    <div className="flex gap-1.5 shrink-0">
-                      <button onClick={() => toggleDiff(p.number)}
-                        className="text-xs border border-border rounded px-2 py-1 hover:border-foreground inline-flex items-center gap-1">
-                        {expanded === p.number ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                        View changes
-                      </button>
-                      <a href={p.html_url} target="_blank" rel="noreferrer"
-                        className="text-xs border border-border rounded px-2 py-1 hover:border-foreground inline-flex items-center gap-1">
-                        Open <ExternalLink className="h-3 w-3" />
-                      </a>
-                      <button onClick={() => setConfirmMerge(p)} disabled={merging === p.number}
-                        className="text-xs bg-brand text-primary-foreground rounded px-2 py-1 hover:opacity-90 disabled:opacity-50">
-                        {merging === p.number ? "Approving…" : "Approve change"}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {expanded === p.number && (
-                  <div className="border-t border-border bg-background/50">
-                    {loadingDetail === p.number ? (
-                      <div className="p-4 text-sm text-muted-foreground">Loading changes…</div>
-                    ) : details[p.number] ? (
-                      <div className="p-4 space-y-3">
-                        {details[p.number].body && (
-                          <div className="text-xs text-muted-foreground whitespace-pre-wrap mb-3 max-h-40 overflow-y-auto scrollbar-thin">
-                            {details[p.number].body.slice(0, 500)}
-                          </div>
-                        )}
-                        {details[p.number].files.length === 0 ? (
-                          <div className="text-xs text-muted-foreground">No file changes</div>
-                        ) : details[p.number].files.map((f: any) => (
-                          <FileDiff key={f.filename} file={f} />
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <div>
-        <button onClick={() => setShowCommits(!showCommits)}
-          className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5">
-          {showCommits ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-          {showCommits ? "Hide recent updates" : "Show recent updates"}
-        </button>
-        {showCommits && (
-          <Card className="mt-3" title="Recent updates" right={
-            <a href={`https://github.com/${ws.github_repo}/commits`} target="_blank" rel="noreferrer"
-              className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
-              View all <ExternalLink className="h-3 w-3" />
-            </a>
-          }>
-            {commits === null ? (
-              <div className="text-sm text-muted-foreground">Loading…</div>
-            ) : commits.length === 0 ? (
-              <div className="text-sm text-muted-foreground">No updates yet</div>
-            ) : (
-              <ul className="divide-y divide-border -mx-2">
-                {commits.map((c) => (
-                  <li key={c.sha} className="px-2 py-2">
-                    <a href={c.html_url} target="_blank" rel="noreferrer" className="flex items-center gap-3 hover:bg-accent/50 rounded px-1 -mx-1 py-1">
-                      <GitCommit className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                      <span className="font-mono text-xs text-muted-foreground">{c.short_sha}</span>
-                      <span className="text-sm flex-1 truncate">{c.message}</span>
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">{c.author} · {timeAgo(c.date)}</span>
+          {filesError && <div className="p-4 text-sm text-error">{filesError}</div>}
+          {filesLoading && fileEntries === null ? (
+            <div className="p-6 text-sm text-muted-foreground">Loading files…</div>
+          ) : fileEntries && fileEntries.length === 0 ? (
+            <div className="p-6 text-sm text-muted-foreground">No files in this folder</div>
+          ) : fileEntries ? (
+            <ul className="divide-y divide-border">
+              {filePath && (
+                <li>
+                  <button
+                    onClick={() => {
+                      const parent = filePath.split("/").slice(0, -1).join("/");
+                      loadFiles(parent);
+                    }}
+                    className="w-full text-left px-4 py-2 hover:bg-accent/50 inline-flex items-center gap-2 text-sm text-muted-foreground"
+                  >
+                    <ChevronRight className="h-3.5 w-3.5 rotate-180" /> ..
+                  </button>
+                </li>
+              )}
+              {fileEntries.map((e: any) => (
+                <li key={e.path}>
+                  {e.type === "dir" ? (
+                    <button
+                      onClick={() => loadFiles(e.path)}
+                      className="w-full text-left px-4 py-2 hover:bg-accent/50 inline-flex items-center gap-2 text-sm"
+                    >
+                      <Folder className="h-3.5 w-3.5 text-brand shrink-0" />
+                      <span className="font-mono">{e.name}</span>
+                    </button>
+                  ) : (
+                    <a
+                      href={e.html_url ?? `https://github.com/${ws.github_repo}/blob/HEAD/${e.path}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="w-full px-4 py-2 hover:bg-accent/50 flex items-center gap-2 text-sm"
+                    >
+                      <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <span className="font-mono flex-1 truncate">{e.name}</span>
+                      <ExternalLink className="h-3 w-3 text-muted-foreground" />
                     </a>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-        )}
-      </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      )}
+
+      {tab === "activity" && (
+        <Card title="Recent updates" right={
+          <a href={`https://github.com/${ws.github_repo}/commits`} target="_blank" rel="noreferrer"
+            className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+            View all <ExternalLink className="h-3 w-3" />
+          </a>
+        }>
+          {commits === null ? (
+            <div className="text-sm text-muted-foreground">Loading…</div>
+          ) : commits.length === 0 ? (
+            <div className="text-sm text-muted-foreground">No updates yet</div>
+          ) : (
+            <ul className="divide-y divide-border -mx-2">
+              {commits.map((c) => (
+                <li key={c.sha} className="px-2 py-2">
+                  <a href={c.html_url} target="_blank" rel="noreferrer" className="flex items-center gap-3 hover:bg-accent/50 rounded px-1 -mx-1 py-1">
+                    <GitCommit className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <span className="font-mono text-xs text-muted-foreground">{c.short_sha}</span>
+                    <span className="text-sm flex-1 truncate">{c.message}</span>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">{c.author} · {timeAgo(c.date)}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
 
       {confirmMerge && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setConfirmMerge(null)}>
