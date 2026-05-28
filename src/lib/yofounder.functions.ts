@@ -89,7 +89,7 @@ async function callOpenAI(apiKey: string, systemPrompt: string, history: ChatMsg
 }
 
 async function callGemini(apiKey: string, systemPrompt: string, history: ChatMsg[], maxTokens: number) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
   // Inline the system prompt into the conversation for broadest compatibility
   const fullConversation = [
     `System: ${systemPrompt}`,
@@ -209,15 +209,19 @@ function buildHistoryForProvider(history: any[], myUserId: string): ChatMsg[] {
 
 function keyForProvider(profile: any): { provider: Provider; key: string } | null {
   const p = profile?.ai_provider as Provider | null;
-  if (!p) return null;
+  // Honor the explicit provider choice if a key is available for it
+  if (p === "claude" && profile?.anthropic_key) return { provider: "claude", key: profile.anthropic_key };
+  if (p === "gpt" && profile?.openai_key) return { provider: "gpt", key: profile.openai_key };
   if (p === "gemini") {
-    const k = process.env.GEMINI_API_KEY;
-    if (!k) return null;
-    return { provider: "gemini", key: k };
+    const k = profile?.gemini_key || process.env.GEMINI_API_KEY;
+    if (k) return { provider: "gemini", key: k };
   }
-  const k = p === "claude" ? profile.anthropic_key : profile.openai_key;
-  if (!k) return null;
-  return { provider: p, key: k };
+  // Fallback: use whatever key is available, preferring Gemini (free server key)
+  if (profile?.gemini_key) return { provider: "gemini", key: profile.gemini_key };
+  if (process.env.GEMINI_API_KEY) return { provider: "gemini", key: process.env.GEMINI_API_KEY };
+  if (profile?.anthropic_key) return { provider: "claude", key: profile.anthropic_key };
+  if (profile?.openai_key) return { provider: "gpt", key: profile.openai_key };
+  return null;
 }
 
 async function respondForUser(opts: {
