@@ -376,15 +376,15 @@ export const createGithubIssue = createServerFn({ method: "POST" })
       .single();
     if (!ws) throw new Error("Workspace not found");
 
-    const { data: meProf } = await supabase
-      .from("profiles").select("github_token").eq("id", userId).single();
-    let token: string | null = meProf?.github_token ?? null;
+    const { data: meSec } = await supabase
+      .from("profile_secrets").select("github_token").eq("user_id", userId).maybeSingle();
+    let token: string | null = meSec?.github_token ?? null;
     if (!token) {
-      const { data: ownerProf } = await supabase
-        .from("profiles").select("github_token").eq("id", ws.created_by).single();
-      token = ownerProf?.github_token ?? null;
+      const { data: ownerSec } = await supabase
+        .from("profile_secrets").select("github_token").eq("user_id", ws.created_by).maybeSingle();
+      token = ownerSec?.github_token ?? null;
     }
-    if (!token) throw new Error("No GitHub token available. Set one in onboarding.");
+    if (!token) throw new Error("No GitHub token available. Set one in Settings → GitHub.");
 
     const { data: prompt } = await supabase
       .from("prompts").select("title, content").eq("id", data.promptId).single();
