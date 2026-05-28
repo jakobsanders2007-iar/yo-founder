@@ -121,10 +121,9 @@ function SettingsPage() {
     setGhBusy(true);
     setGhState(null);
     try {
-      const guessedLogin = ghToken.trim().startsWith("gh") ? profile?.github_username ?? "GitHub" : "GitHub";
-      await saveGh({ data: { token: ghToken.trim(), login: guessedLogin } });
+      await saveGh({ data: { token: ghToken.trim() } });
       setGhState({ ok: true, msg: "Saved and hidden ✓" });
-      setProfile((p: any) => ({ ...p, github_username: p?.github_username ?? guessedLogin, has_github: true }));
+      setProfile((p: any) => ({ ...p, has_github: true }));
       setGhToken("");
       if (!silent) toast.success("GitHub key saved");
       return { ok: true as const, saved: true as const };
@@ -219,16 +218,22 @@ function SettingsPage() {
         {/* GitHub */}
         <section className="bg-surface border border-border rounded-lg p-6">
           <h2 className="text-lg font-semibold mb-4 inline-flex items-center gap-2"><Github className="h-5 w-5" /> GitHub</h2>
-          {profile.has_github && profile.github_username ? (
+          {profile.has_github ? (
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-3">
-                <img
-                  src={`https://github.com/${profile.github_username}.png?size=80`}
-                  alt={profile.github_username}
-                  className="h-10 w-10 rounded-full border border-border"
-                />
+                {profile.github_username ? (
+                  <img
+                    src={`https://github.com/${profile.github_username}.png?size=80`}
+                    alt={profile.github_username}
+                    className="h-10 w-10 rounded-full border border-border"
+                  />
+                ) : (
+                  <div className="h-10 w-10 rounded-full border border-border bg-background flex items-center justify-center">
+                    <Github className="h-5 w-5" />
+                  </div>
+                )}
                 <div>
-                  <div className="font-medium">@{profile.github_username}</div>
+                  <div className="font-medium">{profile.github_username ? `@${profile.github_username}` : "GitHub key stored"}</div>
                   <div className="text-xs text-success inline-flex items-center gap-1"><Check className="h-3 w-3" /> Connected</div>
                 </div>
               </div>
