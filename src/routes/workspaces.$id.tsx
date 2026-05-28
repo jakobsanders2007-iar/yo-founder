@@ -242,8 +242,12 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
         <Sparkles className="h-3 w-3" /> {generating ? "Generating..." : "Generate Claude Code Prompt"}
       </button>
       <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin px-4 md:px-6 py-6 space-y-4">
-        {messages.map((m) => {
-          const sender = membersById[m.sender_user_id];
+        {errorBanner && (
+          <div className="bg-error/10 border border-error/40 text-error text-sm rounded p-3 flex items-center justify-between">
+            <span>{errorBanner}</span>
+            <button onClick={() => setErrorBanner(null)} className="text-error/70 hover:text-error"><X className="h-4 w-4" /></button>
+          </div>
+        )}
           const color = sender?.avatar_color ?? "#666";
           const name = sender?.display_name ?? "?";
           const isAi = m.sender_type === "ai";
