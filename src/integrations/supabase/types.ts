@@ -136,6 +136,7 @@ export type Database = {
           avatar_color: string
           created_at: string
           display_name: string
+          gemini_key: string | null
           github_token: string | null
           github_username: string | null
           id: string
@@ -149,6 +150,7 @@ export type Database = {
           avatar_color?: string
           created_at?: string
           display_name?: string
+          gemini_key?: string | null
           github_token?: string | null
           github_username?: string | null
           id: string
@@ -162,6 +164,7 @@ export type Database = {
           avatar_color?: string
           created_at?: string
           display_name?: string
+          gemini_key?: string | null
           github_token?: string | null
           github_username?: string | null
           id?: string
@@ -403,9 +406,9 @@ export type Database = {
       }
     }
     Enums: {
-      ai_provider: "claude" | "gpt"
+      ai_provider: "claude" | "gpt" | "gemini"
       member_role: "owner" | "cofounder"
-      prompt_status: "draft" | "sent" | "ready" | "pushed"
+      prompt_status: "draft" | "sent" | "ready" | "pushed" | "reading"
       sender_type: "human" | "ai"
     }
     CompositeTypes: {
@@ -534,9 +537,9 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      ai_provider: ["claude", "gpt"],
+      ai_provider: ["claude", "gpt", "gemini"],
       member_role: ["owner", "cofounder"],
-      prompt_status: ["draft", "sent", "ready", "pushed"],
+      prompt_status: ["draft", "sent", "ready", "pushed", "reading"],
       sender_type: ["human", "ai"],
     },
   },
