@@ -717,10 +717,10 @@ function JobPanel({ job, repo }: { job: Job; repo: string | null }) {
 
       {done && job.pr_url && (
         <div className="border-t border-success/20 pt-3 mt-2 flex flex-wrap gap-2 items-center">
-          <span className="text-xs text-success flex-1">PR #{job.pr_number} opened on {repo}</span>
+          <span className="text-xs text-success flex-1">Change request #{job.pr_number} ready on {repo}</span>
           <a href={job.pr_url} target="_blank" rel="noreferrer"
             className="text-xs inline-flex items-center gap-1 bg-brand text-primary-foreground rounded px-3 py-1.5 hover:opacity-90">
-            View PR on GitHub <ExternalLink className="h-3 w-3" />
+            Review your change <ExternalLink className="h-3 w-3" />
           </a>
         </div>
       )}
