@@ -33,9 +33,16 @@ export function GithubTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void 
 
   useEffect(() => {
     if (!user) return;
-    supabase.from("profiles").select("github_token, github_username").eq("id", user.id).single()
-      .then(({ data }) => { setProfile(data); setLoadingProfile(false); });
+    (async () => {
+      const [{ data: p }, { data: s }] = await Promise.all([
+        supabase.from("profiles").select("github_username").eq("id", user.id).single(),
+        supabase.from("profile_secrets").select("github_token").eq("user_id", user.id).maybeSingle(),
+      ]);
+      setProfile({ ...(p ?? {}), github_token: s?.github_token ?? null });
+      setLoadingProfile(false);
+    })();
   }, [user]);
+
 
   const fetchRepos = useCallback(async () => {
     setLoadingRepos(true);
