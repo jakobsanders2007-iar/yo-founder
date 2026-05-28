@@ -1,8 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
-const CHAT_TOKENS = 200;
+const CHAT_TOKENS = 150;
 const PROMPT_TOKENS = 600;
 const TIMEOUT_MS = 25_000;
 
