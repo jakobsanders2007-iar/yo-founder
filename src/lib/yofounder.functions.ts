@@ -505,3 +505,98 @@ export const acceptInvite = createServerFn({ method: "POST" })
     await supabase.from("workspace_invites").update({ accepted: true }).eq("id", invite.id);
     return { workspaceId: invite.workspace_id as string };
   });
+
+// ---------- Send invite (creates row + emails via Resend) ----------
+export const sendInvite = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({
+      workspaceId: z.string().uuid(),
+      email: z.string().email().max(200),
+    }).parse(input)
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+
+    const { data: ws, error: wsErr } = await supabase
+      .from("workspaces").select("name").eq("id", data.workspaceId).single();
+    if (wsErr || !ws) throw new Error("Workspace not found");
+
+    const { data: me } = await supabase
+      .from("profiles").select("display_name").eq("id", userId).single();
+    const inviterName = me?.display_name || "A founder";
+
+    const { data: invite, error: invErr } = await supabase
+      .from("workspace_invites")
+      .insert({ workspace_id: data.workspaceId, invited_by: userId, email: data.email })
+      .select("token").single();
+    if (invErr || !invite) throw new Error(invErr?.message ?? "Failed to create invite");
+
+    const link = `https://yo-founder.com/invite/${invite.token}`;
+    const subject = `${inviterName} invited you to ${ws.name} on YoFounder`;
+    const html = `
+      <div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;color:#0a0a0a">
+        <h1 style="font-size:22px;margin:0 0 16px">You've been invited to YoFounder</h1>
+        <p style="font-size:15px;line-height:1.6;color:#374151;margin:0 0 12px">
+          Your co-founder <strong>${escapeHtml(inviterName)}</strong> is building
+          <strong>${escapeHtml(ws.name)}</strong> on YoFounder and wants you to join.
+        </p>
+        <p style="font-size:15px;line-height:1.6;color:#374151;margin:0 0 28px">
+          Click below to accept and connect your AI.
+        </p>
+        <a href="${link}" style="display:inline-block;background:#f59e0b;color:#0a0a0a;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:600;font-size:15px">
+          Join ${escapeHtml(ws.name)}
+        </a>
+        <p style="font-size:13px;color:#6b7280;margin:32px 0 0">
+          Or open this link: <a href="${link}" style="color:#f59e0b">${link}</a>
+        </p>
+        <p style="font-size:12px;color:#9ca3af;margin:32px 0 0">yo-founder.com</p>
+      </div>`;
+
+    const resendKey = process.env.RESEND_API_KEY;
+    if (!resendKey) {
+      return { ok: true, link, emailed: false, reason: "Resend not configured — share the link manually" };
+    }
+
+    const res = await withTimeout((signal) =>
+      fetch("https://api.resend.com/emails", {
+        method: "POST",
+        signal,
+        headers: {
+          "content-type": "application/json",
+          Authorization: `Bearer ${resendKey}`,
+        },
+        body: JSON.stringify({
+          from: "YoFounder <invites@yo-founder.com>",
+          to: [data.email],
+          subject,
+          html,
+        }),
+      })
+    );
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      // Fallback to onboarding sender if domain isn't verified yet
+      if (text.includes("domain") || res.status === 403) {
+        const res2 = await withTimeout((signal) =>
+          fetch("https://api.resend.com/emails", {
+            method: "POST", signal,
+            headers: { "content-type": "application/json", Authorization: `Bearer ${resendKey}` },
+            body: JSON.stringify({ from: "YoFounder <onboarding@resend.dev>", to: [data.email], subject, html }),
+          })
+        );
+        if (!res2.ok) {
+          return { ok: true, link, emailed: false, reason: "Couldn't send email — share the link" };
+        }
+        return { ok: true, link, emailed: true };
+      }
+      return { ok: true, link, emailed: false, reason: `Email failed (${res.status})` };
+    }
+    return { ok: true, link, emailed: true };
+  });
+
+function escapeHtml(s: string) {
+  return s.replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c] as string));
+}
+
