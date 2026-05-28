@@ -147,7 +147,7 @@ function OnboardingPage() {
                     : p === "gpt" ? "Great for writing and creativity"
                     : "Free — no key needed ✓";
                   return (
-                    <button key={p} onClick={() => { setProvider(p); setAiOk(null); setAiErr(null); }}
+                    <button key={p} onClick={() => { setProvider(p); }}
                       className={`p-4 border rounded text-left transition ${provider === p ? "bg-accent" : "border-border hover:border-muted-foreground"}`}
                       style={provider === p ? { borderColor: accent } : undefined}>
                       <div className="font-medium flex items-center gap-1.5">
@@ -179,21 +179,16 @@ function OnboardingPage() {
                   </label>
                   <input
                     type="password" value={aiKey}
-                    onChange={(e) => { setAiKey(e.target.value); setAiOk(null); setAiErr(null); }}
+                    onChange={(e) => { setAiKey(e.target.value); }}
                     className="mt-1 w-full bg-background border border-border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand"
                     placeholder={provider === "claude" ? "sk-ant-..." : "sk-..."}
                   />
-                  <div className="mt-3 flex items-center gap-3">
-                    <button onClick={testAiBtn} disabled={busy || !aiKey.trim()}
-                      className="px-4 py-2 border border-border rounded text-sm hover:border-foreground disabled:opacity-50">
-                      Test key
-                    </button>
-                    {aiOk === true && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> Working</span>}
-                    {aiOk === false && <span className="text-error text-sm flex items-center gap-1"><X className="h-4 w-4" /> {aiErr}</span>}
-                  </div>
-                  <button onClick={finishStep2} disabled={busy || !aiOk}
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Your key will be saved securely and hidden after you continue.
+                  </p>
+                  <button onClick={finishStep2} disabled={busy || !aiKey.trim()}
                     className="mt-8 w-full bg-brand text-primary-foreground font-medium py-2.5 rounded text-sm hover:opacity-90 disabled:opacity-50">
-                    Continue
+                    Save and continue
                   </button>
                 </>
               )}
