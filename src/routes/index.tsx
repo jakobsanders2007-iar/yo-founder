@@ -8,7 +8,16 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "YoFounder — Vibe code with your co-founder" },
-      { name: "description", content: "Two co-founders, two AIs, one workspace." },
+      { name: "description", content: "The multiplayer AI workspace for SaaS founders. Chat, code, and ship together." },
+      { property: "og:title", content: "YoFounder — Vibe code with your co-founder" },
+      { property: "og:description", content: "The multiplayer AI workspace for SaaS founders. Chat, code, and ship together." },
+      { property: "og:url", content: "https://yo-founder.com" },
+      { property: "og:image", content: "https://yo-founder.com/og-image.png" },
+      { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:image", content: "https://yo-founder.com/og-image.png" },
+    ],
+    links: [
+      { rel: "canonical", href: "https://yo-founder.com" },
     ],
   }),
 });
