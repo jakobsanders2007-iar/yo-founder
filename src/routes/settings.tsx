@@ -27,24 +27,15 @@ function SettingsPage() {
   const [aiBusy, setAiBusy] = useState(false);
   const [aiState, setAiState] = useState<{ ok: boolean; msg: string } | null>(null);
 
-  // GitHub
-  const [ghToken, setGhToken] = useState("");
-  const [showGh, setShowGh] = useState(false);
-  const [ghBusy, setGhBusy] = useState(false);
-  const [ghState, setGhState] = useState<{ ok: boolean; msg: string } | null>(null);
-  const [workspaces, setWorkspaces] = useState<{ id: string; name: string; github_repo: string }[]>([]);
-  const [repoEdits, setRepoEdits] = useState<Record<string, string>>({});
-  const [repoBusy, setRepoBusy] = useState<string | null>(null);
-
   // Profile
   const [name, setName] = useState("");
   const [color, setColor] = useState(COLORS[0]);
   const [profBusy, setProfBusy] = useState(false);
 
+  const [ghBusy, setGhBusy] = useState(false);
+
   const testAi = useServerFn(testAiKey);
-  const testGh = useServerFn(testGithubToken);
   const saveAi = useServerFn(saveAiKey);
-  const saveGh = useServerFn(saveGithubToken);
 
   useEffect(() => {
     if (loading) return;
