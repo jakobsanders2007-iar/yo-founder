@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { Logo } from "@/components/Logo";
-import { testAiKey, saveAiKey } from "@/lib/yofounder.functions";
+import { testAiKey, saveAiKey, testGithubToken, saveGithubToken } from "@/lib/yofounder.functions";
 import { toast } from "sonner";
 import { ArrowLeft, Check, Eye, EyeOff, X, Github } from "lucide-react";
 
