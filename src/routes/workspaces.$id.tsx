@@ -888,6 +888,11 @@ function CodeTab({ ws, workspaceId, user }: any) {
         selectedId={selected?.id}
         onSelect={(p) => { setSelected(p); setPromptText(p.content ?? ""); }}
         onNew={() => startNewPrompt("")}
+        onDelete={async (id) => {
+          const { error } = await supabase.from("prompts").delete().eq("id", id);
+          if (error) toast.error(error.message);
+          else if (selected?.id === id) { setSelected(null); setPromptText(""); }
+        }}
       />
 
       <SubTabBar value={subTab} onChange={setSubTab} />
