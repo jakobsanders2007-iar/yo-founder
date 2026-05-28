@@ -615,18 +615,18 @@ function CodeTab({ ws, workspaceId, user }: any) {
                 <button onClick={() => setConfirmRun(true)}
                   disabled={running || !hasRepo || isJobRunning || blockedByOther}
                   className="bg-amber-500 text-background px-4 py-2 rounded text-sm font-medium hover:opacity-90 disabled:opacity-50 inline-flex items-center gap-1.5">
-                  <Sparkles className="h-4 w-4" /> {isJobRunning ? "Claude Code is running..." : running ? "Starting..." : "Run with Claude Code"}
+                  <Sparkles className="h-4 w-4" /> {isJobRunning ? "Working on it..." : running ? "Starting..." : "Make this change"}
                 </button>
                 <button onClick={copyPrompt}
                   className="px-4 py-2 border border-border rounded text-sm hover:border-foreground inline-flex items-center gap-1.5">
-                  <Copy className="h-4 w-4" /> {copied ? "Copied!" : "Copy Prompt"}
+                  <Copy className="h-4 w-4" /> {copied ? "Copied!" : "Copy instructions"}
                 </button>
                 <button onClick={() => setConfirmDel(true)}
                   className="px-4 py-2 text-sm text-muted-foreground hover:text-error inline-flex items-center gap-1.5">
                   <Trash2 className="h-4 w-4" /> Delete
                 </button>
                 {blockedByOther && (
-                  <span className="text-xs text-amber-500">Another job is running in this workspace.</span>
+                  <span className="text-xs text-amber-500">Another change is in progress — hang tight.</span>
                 )}
               </div>
 
