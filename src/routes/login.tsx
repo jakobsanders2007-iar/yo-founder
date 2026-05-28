@@ -125,6 +125,12 @@ function LoginPage() {
             {mode === "signin" ? "Need an account? Sign up" : "Have an account? Sign in"}
           </button>
         </form>
+
+        <p className="mt-8 text-center text-xs text-muted-foreground">
+          <a href="https://yo-founder.com" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition">
+            yo-founder.com
+          </a>
+        </p>
       </div>
     </div>
   );
