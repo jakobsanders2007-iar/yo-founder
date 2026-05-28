@@ -10,7 +10,7 @@ import {
 } from "@/lib/yofounder.functions";
 import {
   runClaudeCode, getGithubPRDetail, getRepoTree, getRepoFile,
-  approveAndPushPR, closeGithubPR, fetchVercelPreview,
+  approveAndPushPR, closeGithubPR, fetchVercelPreview, generateUiPreview,
 } from "@/lib/integrations.functions";
 import { toast } from "sonner";
 import {
