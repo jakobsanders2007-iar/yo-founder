@@ -564,7 +564,7 @@ function CodeTab({ ws, workspaceId, user }: any) {
           {prompts.length === 0 ? (
             <div className="p-6 text-sm text-muted-foreground text-center">
               <FileCode className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              No prompts yet. Generate one from chat, or create a new prompt.
+              No changes yet — generate one from chat or start a new one! 🎉
             </div>
           ) : (
             <ul>
