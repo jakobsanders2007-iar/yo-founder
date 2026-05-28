@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { Logo } from "@/components/Logo";
-import { testAiKey, saveAiKey, testGithubToken, saveGithubToken } from "@/lib/yofounder.functions";
+import { saveAiKey, saveGithubToken } from "@/lib/yofounder.functions";
 import { toast } from "sonner";
 import { ArrowLeft, Check, Eye, EyeOff, X, Github } from "lucide-react";
 
@@ -36,9 +36,7 @@ function SettingsPage() {
   const [showGh, setShowGh] = useState(false);
   const [ghState, setGhState] = useState<{ ok: boolean; msg: string } | null>(null);
 
-  const testAi = useServerFn(testAiKey);
   const saveAi = useServerFn(saveAiKey);
-  const testGh = useServerFn(testGithubToken);
   const saveGh = useServerFn(saveGithubToken);
 
   useEffect(() => {
@@ -103,18 +101,9 @@ function SettingsPage() {
         has_gemini: provider === "gemini" ? true : p?.has_gemini,
       }));
 
-      if (provider !== "gemini" && aiKey.trim()) {
-        const t = await testAi({ data: { provider, apiKey: aiKey.trim() } }).catch(() => ({ success: false as const }));
-        if (!t.success) {
-          setAiState({ ok: true, msg: "Saved ✓ — but the test call failed. Double-check the key works." });
-          if (!silent) toast.success("Key saved (test failed — verify it)");
-          return { ok: true as const, saved: true as const };
-        }
-      }
-
       setAiKey("");
-      setAiState({ ok: true, msg: "Saved ✓" });
-      if (!silent) toast.success("AI saved ✓");
+      setAiState({ ok: true, msg: "Saved and hidden ✓" });
+      if (!silent) toast.success("AI key saved");
       return { ok: true as const, saved: true as const };
     } catch (e: any) {
       setAiState({ ok: false, msg: e?.message ?? "Couldn't save — please try again" });
@@ -132,18 +121,12 @@ function SettingsPage() {
     setGhBusy(true);
     setGhState(null);
     try {
-      const t = await testGh({ data: { token: ghToken.trim() } });
-      if (!t.success) {
-        setGhState({ ok: false, msg: "That token didn't work — check it has `repo` + `read:user` scopes" });
-        if (!silent) toast.error("GitHub token didn't work");
-        return { ok: false as const, saved: true as const };
-      }
-
-      await saveGh({ data: { token: ghToken.trim(), login: t.login } });
-      setGhState({ ok: true, msg: `Connected as @${t.login} ✓` });
-      setProfile((p: any) => ({ ...p, github_username: t.login, has_github: true }));
+      const guessedLogin = ghToken.trim().startsWith("gh") ? profile?.github_username ?? "GitHub" : "GitHub";
+      await saveGh({ data: { token: ghToken.trim(), login: guessedLogin } });
+      setGhState({ ok: true, msg: "Saved and hidden ✓" });
+      setProfile((p: any) => ({ ...p, github_username: p?.github_username ?? guessedLogin, has_github: true }));
       setGhToken("");
-      if (!silent) toast.success(`GitHub connected as @${t.login}`);
+      if (!silent) toast.success("GitHub key saved");
       return { ok: true as const, saved: true as const };
     } catch (e: any) {
       setGhState({ ok: false, msg: e?.message ?? "Couldn't save — please try again" });
