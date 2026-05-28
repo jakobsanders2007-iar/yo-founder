@@ -217,7 +217,7 @@ function SettingsPage() {
                   className="bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50 inline-flex items-center gap-2"
                 >
                   <Github className="h-4 w-4" />
-                  {ghBusy ? "Testing..." : "Test & Save"}
+                  {ghBusy ? "Saving..." : "Save"}
                 </button>
                 {ghState?.ok && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {ghState.msg}</span>}
                 {ghState && !ghState.ok && <span className="text-error text-sm flex items-center gap-1"><X className="h-4 w-4" /> {ghState.msg}</span>}
@@ -298,7 +298,7 @@ function SettingsPage() {
               <div className="mt-3 flex items-center gap-3">
                 <button onClick={handleAiSave} disabled={aiBusy || !aiKey.trim()}
                   className="bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50">
-                  {aiBusy ? "Testing..." : "Test & Save"}
+                  {aiBusy ? "Saving..." : "Save"}
                 </button>
                 {aiState?.ok && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {aiState.msg}</span>}
                 {aiState && !aiState.ok && <span className="text-error text-sm flex items-center gap-1"><X className="h-4 w-4" /> {aiState.msg}</span>}
