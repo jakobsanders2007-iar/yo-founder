@@ -328,24 +328,42 @@ function SettingsPage() {
               <label className="text-xs text-muted-foreground">
                 {provider === "claude" ? "Anthropic secret key" : "OpenAI secret key"}
               </label>
-              <div className="mt-1 relative">
-                <input
-                  type={showAi ? "text" : "password"}
-                  value={aiKey}
-                  onChange={(e) => { setAiKey(e.target.value); setAiState(null); }}
-                  className="w-full bg-background border border-border rounded px-3 py-2 pr-10 text-sm font-mono focus:outline-none focus:border-brand"
-                  placeholder={provider === "claude" ? "sk-ant-..." : "sk-..."}
-                />
-                <button type="button" onClick={() => setShowAi((s) => !s)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                  {showAi ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-              <div className="mt-3 flex items-center gap-3">
-                <span className="text-xs text-muted-foreground">Your key will be stored securely and hidden when you use the final save button below.</span>
-                {aiState?.ok && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {aiState.msg}</span>}
-                {aiState && !aiState.ok && <span className="text-error text-sm flex items-center gap-1"><X className="h-4 w-4" /> {aiState.msg}</span>}
-              </div>
+              {activeAiKeySaved && !replaceAiKey && !aiKey.trim() ? (
+                <div className="mt-1 rounded border border-border bg-background px-3 py-3 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium">{provider === "claude" ? "Claude key stored" : "ChatGPT key stored"}</div>
+                    <div className="text-xs text-muted-foreground">Saved securely and hidden. It stays stored after logout.</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setReplaceAiKey(true); setAiState(null); }}
+                    className="text-xs border border-border rounded px-3 py-1.5 hover:border-foreground"
+                  >
+                    Replace
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="mt-1 relative">
+                    <input
+                      type={showAi ? "text" : "password"}
+                      value={aiKey}
+                      onChange={(e) => { setAiKey(e.target.value); setAiState(null); }}
+                      className="w-full bg-background border border-border rounded px-3 py-2 pr-10 text-sm font-mono focus:outline-none focus:border-brand"
+                      placeholder={provider === "claude" ? "sk-ant-..." : "sk-..."}
+                    />
+                    <button type="button" onClick={() => setShowAi((s) => !s)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                      {showAi ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <div className="mt-3 flex items-center gap-3">
+                    <span className="text-xs text-muted-foreground">Your key will be stored securely and hidden when you use the final save button below.</span>
+                    {aiState?.ok && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {aiState.msg}</span>}
+                    {aiState && !aiState.ok && <span className="text-error text-sm flex items-center gap-1"><X className="h-4 w-4" /> {aiState.msg}</span>}
+                  </div>
+                </>
+              )}
             </>
           )}
         </section>
