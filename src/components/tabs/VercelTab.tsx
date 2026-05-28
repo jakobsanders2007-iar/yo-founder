@@ -77,8 +77,9 @@ function VercelSetup({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void }) {
 
   return (
     <div className="p-6 max-w-3xl space-y-6">
-      <div className="text-xs text-muted-foreground">
-        Vercel hosts your app on the internet. <span className="text-success">Free tier</span>: unlimited projects, 100GB bandwidth/month.
+      <div>
+        <h2 className="text-xl font-semibold">Get your app online</h2>
+        <p className="text-sm text-muted-foreground mt-1">Vercel publishes your app to the internet for free.</p>
       </div>
 
       <SetupStep n={1} title="Create a Vercel account" done={step >= 1} active={step === 0}>

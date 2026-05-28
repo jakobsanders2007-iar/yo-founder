@@ -294,7 +294,7 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
         {typing && (
           <div className="flex gap-3 items-center text-xs text-muted-foreground">
             <Avatar name={typing.name} color={typing.color} size="sm" />
-            <span>{typing.name}'s {typing.provider === "claude" ? "Claude" : "GPT"} is thinking</span>
+            <span>{typing.name}'s {typing.provider === "claude" ? "Claude" : typing.provider === "gemini" ? "Gemini" : "ChatGPT"} is thinking</span>
             <span className="flex gap-1">
               <span className="typing-dot h-1.5 w-1.5 rounded-full" style={{ background: typing.color }} />
               <span className="typing-dot h-1.5 w-1.5 rounded-full" style={{ background: typing.color }} />
@@ -370,24 +370,24 @@ type Job = {
 };
 
 const STEPS: { key: string; label: string; matches: string[] }[] = [
-  { key: "clone",  label: "Cloning repo",       matches: ["cloning"] },
-  { key: "code",   label: "Reading & coding",   matches: ["coding"] },
-  { key: "commit", label: "Committing changes", matches: ["committing"] },
-  { key: "pr",     label: "Opening PR",         matches: ["pr_opened"] },
+  { key: "read",   label: "Reading your code",          matches: ["reading", "cloning"] },
+  { key: "code",   label: "Making your changes",        matches: ["coding"] },
+  { key: "commit", label: "Saving the changes",         matches: ["committing"] },
+  { key: "pr",     label: "Sending changes for review", matches: ["pr_opened"] },
 ];
 
 function stepState(jobStatus: string, idx: number): "done" | "active" | "idle" | "error" {
-  if (jobStatus === "failed") {
-    // mark the last in-progress step as error; everything after idle
+  const order = ["queued", "reading", "coding", "committing", "pr_opened"];
+  // back-compat: treat legacy "cloning" as "reading"
+  const status = jobStatus === "cloning" ? "reading" : jobStatus;
+  if (status === "failed") {
     return idx === 0 ? "error" : "idle";
   }
-  const order = ["queued", "cloning", "coding", "committing", "pr_opened"];
-  const cur = order.indexOf(jobStatus);
+  const cur = order.indexOf(status);
   if (cur < 0) return "idle";
-  // step idx done when current > idx+1
+  if (status === "pr_opened") return "done";
   if (cur > idx + 1) return "done";
   if (cur === idx + 1) return "active";
-  if (jobStatus === "pr_opened") return "done";
   return "idle";
 }
 
@@ -437,7 +437,7 @@ function CodeTab({ ws, workspaceId, user }: any) {
       }
       setJobs(map);
       const act = (data ?? []).find((j: any) =>
-        ["queued", "cloning", "coding", "committing"].includes(j.status)
+        ["queued", "reading", "cloning", "coding", "committing"].includes(j.status)
       );
       setActiveWsJob((act as Job) ?? null);
     })();
@@ -457,7 +457,7 @@ function CodeTab({ ws, workspaceId, user }: any) {
             }
             return next;
           });
-          if (["queued", "cloning", "coding", "committing"].includes(row.status)) {
+          if (["queued", "reading", "cloning", "coding", "committing"].includes(row.status)) {
             setActiveWsJob(row);
           } else {
             setActiveWsJob((cur) => (cur && cur.id === row.id ? null : cur));
@@ -473,7 +473,7 @@ function CodeTab({ ws, workspaceId, user }: any) {
   }, [selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const job = selected ? jobs[selected.id] : null;
-  const isJobRunning = !!job && ["queued", "cloning", "coding", "committing"].includes(job.status);
+  const isJobRunning = !!job && ["queued", "reading", "cloning", "coding", "committing"].includes(job.status);
   const blockedByOther = !!activeWsJob && (!job || activeWsJob.id !== job.id);
 
   const newBlank = async () => {
@@ -521,7 +521,7 @@ function CodeTab({ ws, workspaceId, user }: any) {
   const statusStyle = (s: string) => {
     const j = (s || "").toLowerCase();
     if (j === "pushed" || j === "pr_opened") return "bg-violet-500/15 text-violet-400";
-    if (["cloning", "coding", "committing", "queued"].includes(j)) return "bg-blue-500/15 text-blue-400 animate-pulse";
+    if (["reading", "cloning", "coding", "committing", "queued"].includes(j)) return "bg-blue-500/15 text-blue-400 animate-pulse";
     if (j === "failed") return "bg-error/15 text-error";
     if (j === "ready") return "bg-amber-500/15 text-amber-500";
     return "bg-muted text-muted-foreground";
@@ -530,7 +530,7 @@ function CodeTab({ ws, workspaceId, user }: any) {
   // Combine prompt status with live job status for display
   const displayStatus = (p: any) => {
     const j = jobs[p.id];
-    if (j && ["queued", "cloning", "coding", "committing", "failed"].includes(j.status)) return j.status;
+    if (j && ["queued", "reading", "cloning", "coding", "committing", "failed"].includes(j.status)) return j.status;
     if (j && j.status === "pr_opened") return "pr_opened";
     return p.status;
   };
@@ -542,19 +542,19 @@ function CodeTab({ ws, workspaceId, user }: any) {
         {hasRepo ? (
           <div className="flex items-center gap-2 text-sm">
             <Github className="h-4 w-4 text-muted-foreground" />
-            <span className="text-muted-foreground">Pushing to:</span>
+            <span className="text-muted-foreground">Saving changes to:</span>
             <a href={`https://github.com/${ws.github_repo}`} target="_blank" rel="noreferrer"
               className="font-mono text-foreground hover:underline">{ws.github_repo}</a>
           </div>
         ) : (
           <Link to="/settings" className="flex items-center gap-2 text-sm text-amber-500 hover:underline">
             <AlertTriangle className="h-4 w-4" />
-            <span>Connect a GitHub repo in settings to use this feature</span>
+            <span>Connect your code in settings to start using this</span>
           </Link>
         )}
         <button onClick={newBlank}
           className="inline-flex items-center gap-1.5 bg-brand text-primary-foreground px-3 py-1.5 rounded text-sm hover:opacity-90">
-          <Plus className="h-3.5 w-3.5" /> New Prompt
+          <Plus className="h-3.5 w-3.5" /> New change
         </button>
       </div>
 
@@ -564,7 +564,7 @@ function CodeTab({ ws, workspaceId, user }: any) {
           {prompts.length === 0 ? (
             <div className="p-6 text-sm text-muted-foreground text-center">
               <FileCode className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              No prompts yet. Generate one from chat, or create a new prompt.
+              No changes yet — generate one from chat or start a new one! 🎉
             </div>
           ) : (
             <ul>
@@ -615,18 +615,18 @@ function CodeTab({ ws, workspaceId, user }: any) {
                 <button onClick={() => setConfirmRun(true)}
                   disabled={running || !hasRepo || isJobRunning || blockedByOther}
                   className="bg-amber-500 text-background px-4 py-2 rounded text-sm font-medium hover:opacity-90 disabled:opacity-50 inline-flex items-center gap-1.5">
-                  <Sparkles className="h-4 w-4" /> {isJobRunning ? "Claude Code is running..." : running ? "Starting..." : "Run with Claude Code"}
+                  <Sparkles className="h-4 w-4" /> {isJobRunning ? "Working on it..." : running ? "Starting..." : "Make this change"}
                 </button>
                 <button onClick={copyPrompt}
                   className="px-4 py-2 border border-border rounded text-sm hover:border-foreground inline-flex items-center gap-1.5">
-                  <Copy className="h-4 w-4" /> {copied ? "Copied!" : "Copy Prompt"}
+                  <Copy className="h-4 w-4" /> {copied ? "Copied!" : "Copy instructions"}
                 </button>
                 <button onClick={() => setConfirmDel(true)}
                   className="px-4 py-2 text-sm text-muted-foreground hover:text-error inline-flex items-center gap-1.5">
                   <Trash2 className="h-4 w-4" /> Delete
                 </button>
                 {blockedByOther && (
-                  <span className="text-xs text-amber-500">Another job is running in this workspace.</span>
+                  <span className="text-xs text-amber-500">Another change is in progress — hang tight.</span>
                 )}
               </div>
 
@@ -637,13 +637,13 @@ function CodeTab({ ws, workspaceId, user }: any) {
       </div>
 
       {confirmRun && (
-        <Modal title="Run with Claude Code?" onClose={() => setConfirmRun(false)}>
+        <Modal title="Make this change?" onClose={() => setConfirmRun(false)}>
           <p className="text-sm text-muted-foreground mb-4">
-            Claude Code will clone your repo, implement this change, and open a PR on GitHub. Continue?
+            We'll read your code, make these changes, save them, and send them for your review. Sound good?
           </p>
           <div className="flex gap-2 justify-end">
-            <button onClick={() => setConfirmRun(false)} className="px-4 py-2 border border-border rounded text-sm hover:border-foreground">Cancel</button>
-            <button onClick={runJob} className="px-4 py-2 bg-amber-500 text-background rounded text-sm font-medium hover:opacity-90">Run</button>
+            <button onClick={() => setConfirmRun(false)} className="px-4 py-2 border border-border rounded text-sm hover:border-foreground">Not yet</button>
+            <button onClick={runJob} className="px-4 py-2 bg-amber-500 text-background rounded text-sm font-medium hover:opacity-90">Yes, do it</button>
           </div>
         </Modal>
       )}
@@ -676,7 +676,7 @@ function JobPanel({ job, repo }: { job: Job; repo: string | null }) {
           failed ? <AlertCircle className="h-4 w-4 text-error" /> :
           <Loader2 className="h-4 w-4 text-blue-400 animate-spin" />}
         <span className="text-sm font-medium">
-          {done ? "PR opened" : failed ? "Job failed" : "Claude Code is working..."}
+          {done ? "Change ready for review 🎉" : failed ? "Something went wrong" : "Working on it... 🔧"}
         </span>
         {job.branch_name && (
           <span className="text-[10px] font-mono text-muted-foreground ml-auto">{job.branch_name}</span>
@@ -717,10 +717,10 @@ function JobPanel({ job, repo }: { job: Job; repo: string | null }) {
 
       {done && job.pr_url && (
         <div className="border-t border-success/20 pt-3 mt-2 flex flex-wrap gap-2 items-center">
-          <span className="text-xs text-success flex-1">PR #{job.pr_number} opened on {repo}</span>
+          <span className="text-xs text-success flex-1">Change request #{job.pr_number} ready on {repo}</span>
           <a href={job.pr_url} target="_blank" rel="noreferrer"
             className="text-xs inline-flex items-center gap-1 bg-brand text-primary-foreground rounded px-3 py-1.5 hover:opacity-90">
-            View PR on GitHub <ExternalLink className="h-3 w-3" />
+            Review your change <ExternalLink className="h-3 w-3" />
           </a>
         </div>
       )}

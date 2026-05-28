@@ -21,7 +21,7 @@ function OnboardingPage() {
   const [step, setStep] = useState(1);
   const [name, setName] = useState("");
   const [color, setColor] = useState(COLORS[0]);
-  const [provider, setProvider] = useState<"claude" | "gpt">("claude");
+  const [provider, setProvider] = useState<"claude" | "gpt" | "gemini">("claude");
   const [aiKey, setAiKey] = useState("");
   const [aiOk, setAiOk] = useState<null | boolean>(null);
   const [aiErr, setAiErr] = useState<string | null>(null);
@@ -127,24 +127,43 @@ function OnboardingPage() {
             <>
               <h2 className="text-lg font-semibold mb-1">Connect your AI</h2>
               <p className="text-sm text-muted-foreground mb-6">Pick your model. Your co-founder picks the other one.</p>
-              <div className="grid grid-cols-2 gap-3">
-                {(["claude","gpt"] as const).map((p) => (
-                  <button key={p} onClick={() => { setProvider(p); setAiOk(null); setAiErr(null); }}
-                    className={`p-4 border rounded text-left transition ${provider === p ? "border-brand bg-accent" : "border-border hover:border-muted-foreground"}`}>
-                    <div className="font-medium">{p === "claude" ? "Claude" : "ChatGPT"}</div>
-                    <div className="text-xs text-muted-foreground mt-1">{p === "claude" ? "Anthropic" : "OpenAI"}</div>
-                  </button>
-                ))}
+              <div className="grid grid-cols-3 gap-3">
+                {(["claude","gpt","gemini"] as const).map((p) => {
+                  const accent = p === "claude" ? "#6366f1" : p === "gpt" ? "#10b981" : "#4285F4";
+                  const label = p === "claude" ? "Claude" : p === "gpt" ? "ChatGPT" : "Gemini";
+                  const desc = p === "claude" ? "Great for coding and analysis"
+                    : p === "gpt" ? "Great for writing and creativity"
+                    : "Google's AI — free to start";
+                  return (
+                    <button key={p} onClick={() => { setProvider(p); setAiOk(null); setAiErr(null); }}
+                      className={`p-4 border rounded text-left transition ${provider === p ? "bg-accent" : "border-border hover:border-muted-foreground"}`}
+                      style={provider === p ? { borderColor: accent } : undefined}>
+                      <div className="font-medium flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: accent }} />
+                        {label}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">{desc}</div>
+                    </button>
+                  );
+                })}
               </div>
               <label className="text-xs text-muted-foreground mt-6 block">
-                {provider === "claude" ? "Anthropic API key" : "OpenAI API key"}
+                {provider === "claude" ? "Anthropic secret key" : provider === "gpt" ? "OpenAI secret key" : "Google AI key"}
               </label>
               <input
                 type="password" value={aiKey}
                 onChange={(e) => { setAiKey(e.target.value); setAiOk(null); setAiErr(null); }}
                 className="mt-1 w-full bg-background border border-border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand"
-                placeholder={provider === "claude" ? "sk-ant-..." : "sk-..."}
+                placeholder={provider === "claude" ? "sk-ant-..." : provider === "gpt" ? "sk-..." : "AIza..."}
               />
+              {provider === "gemini" && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Get your free key at{" "}
+                  <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-brand hover:underline">
+                    aistudio.google.com →
+                  </a>
+                </p>
+              )}
               <div className="mt-3 flex items-center gap-3">
                 <button onClick={testAiBtn} disabled={busy || !aiKey.trim()}
                   className="px-4 py-2 border border-border rounded text-sm hover:border-foreground disabled:opacity-50">
