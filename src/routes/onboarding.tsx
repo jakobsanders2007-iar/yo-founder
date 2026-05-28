@@ -94,13 +94,13 @@ function OnboardingPage() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "github",
         options: {
-          redirectTo: `${window.location.origin}/onboarding`,
-          scopes: "repo read:user",
+          redirectTo: window.location.origin + "/onboarding",
+          scopes: "repo read:user user:email",
         },
       });
       if (error) throw error;
     } catch {
-      toast.error("Something went wrong connecting GitHub — please try again");
+      toast.error("Couldn't connect GitHub right now — please try again or use email to sign in");
       setGhBusy(false);
     }
   };
