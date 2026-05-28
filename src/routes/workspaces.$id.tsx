@@ -632,7 +632,7 @@ type Job = {
   created_at?: string | null;
 };
 
-type SubTab = "preview" | "diff" | "files" | "logs";
+type SubTab = "preview" | "uipreview" | "diff" | "files" | "logs";
 
 type BuildStatus =
   | "waiting" | "thinking" | "building" | "saving"
