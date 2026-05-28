@@ -4,9 +4,9 @@ import { useServerFn } from "@tanstack/react-start";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { Logo } from "@/components/Logo";
-import { testAiKey, testGithubToken, saveAiKey, saveGithubToken } from "@/lib/yofounder.functions";
+import { testAiKey, saveAiKey } from "@/lib/yofounder.functions";
 import { toast } from "sonner";
-import { Check, X } from "lucide-react";
+import { Check, X, Github } from "lucide-react";
 
 const COLORS = ["#6366f1","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#f97316","#ec4899"];
 
@@ -25,28 +25,49 @@ function OnboardingPage() {
   const [aiKey, setAiKey] = useState("");
   const [aiOk, setAiOk] = useState<null | boolean>(null);
   const [aiErr, setAiErr] = useState<string | null>(null);
-  const [ghToken, setGhToken] = useState("");
-  const [ghLogin, setGhLogin] = useState<string | null>(null);
-  const [ghErr, setGhErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [ghUsername, setGhUsername] = useState<string | null>(null);
+  const [ghBusy, setGhBusy] = useState(false);
 
   const testAi = useServerFn(testAiKey);
-  const testGh = useServerFn(testGithubToken);
   const saveAi = useServerFn(saveAiKey);
-  const saveGh = useServerFn(saveGithubToken);
 
   useEffect(() => {
     if (!loading && !user) navigate({ to: "/login" });
   }, [user, loading, navigate]);
 
+  // Detect if user signed in via GitHub
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      const { data } = await supabase.from("profiles")
+        .select("github_username, display_name, avatar_color")
+        .eq("id", user.id).single();
+      if (data?.github_username) setGhUsername(data.github_username);
+      if (data?.display_name && !name) setName(data.display_name);
+      if (data?.avatar_color) setColor(data.avatar_color);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  // Auto-advance step 3 if already connected
+  useEffect(() => {
+    if (step !== 3 || !ghUsername) return;
+    const t = setTimeout(async () => {
+      await supabase.from("profiles").update({ onboarded: true }).eq("id", user!.id);
+      navigate({ to: "/dashboard" });
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [step, ghUsername, navigate, user]);
+
   const finishStep1 = async () => {
-    if (!name.trim()) return toast.error("Enter a display name");
+    if (!name.trim()) return toast.error("Please add your name");
     setBusy(true);
     const { error } = await supabase.from("profiles")
       .update({ display_name: name.trim(), avatar_color: color })
       .eq("id", user!.id);
     setBusy(false);
-    if (error) return toast.error(error.message);
+    if (error) return toast.error("Couldn't save — please try again");
     setStep(2);
   };
 
@@ -56,32 +77,32 @@ function OnboardingPage() {
     const r = await testAi({ data: { provider, apiKey: aiKey.trim() } });
     setBusy(false);
     if (r.success) setAiOk(true);
-    else { setAiOk(false); setAiErr(r.error); }
+    else { setAiOk(false); setAiErr("That key didn't work — double-check and try again"); }
   };
 
   const finishStep2 = async () => {
-    if (!aiOk) return toast.error("Test the key first");
+    if (!aiOk) return toast.error("Please test your key first");
     setBusy(true);
     await saveAi({ data: { provider, apiKey: aiKey.trim() } });
     setBusy(false);
     setStep(3);
   };
 
-  const testGhBtn = async () => {
-    if (!ghToken.trim()) return;
-    setBusy(true); setGhErr(null); setGhLogin(null);
-    const r = await testGh({ data: { token: ghToken.trim() } });
-    setBusy(false);
-    if (r.success) setGhLogin(r.login);
-    else setGhErr(r.error);
-  };
-
-  const finishStep3 = async () => {
-    if (!ghLogin) return toast.error("Test the token first");
-    setBusy(true);
-    await saveGh({ data: { token: ghToken.trim(), login: ghLogin } });
-    setBusy(false);
-    navigate({ to: "/dashboard" });
+  const connectGithub = async () => {
+    setGhBusy(true);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "github",
+        options: {
+          redirectTo: `${window.location.origin}/onboarding`,
+          scopes: "repo read:user",
+        },
+      });
+      if (error) throw error;
+    } catch {
+      toast.error("Something went wrong connecting GitHub — please try again");
+      setGhBusy(false);
+    }
   };
 
   return (
@@ -125,8 +146,8 @@ function OnboardingPage() {
 
           {step === 2 && (
             <>
-              <h2 className="text-lg font-semibold mb-1">Connect your AI</h2>
-              <p className="text-sm text-muted-foreground mb-6">Pick your model. Your co-founder picks the other one.</p>
+              <h2 className="text-lg font-semibold mb-1">Choose your AI</h2>
+              <p className="text-sm text-muted-foreground mb-6">Pick your model. Your co-founder picks theirs.</p>
               <div className="grid grid-cols-3 gap-3">
                 {(["claude","gpt","gemini"] as const).map((p) => {
                   const accent = p === "claude" ? "#6366f1" : p === "gpt" ? "#10b981" : "#4285F4";
@@ -180,32 +201,41 @@ function OnboardingPage() {
           )}
 
           {step === 3 && (
-            <>
-              <h2 className="text-lg font-semibold mb-1">Connect GitHub</h2>
-              <p className="text-sm text-muted-foreground mb-6">Used to create issues from generated prompts.</p>
-              <label className="text-xs text-muted-foreground">Personal Access Token</label>
-              <input
-                type="password" value={ghToken}
-                onChange={(e) => { setGhToken(e.target.value); setGhLogin(null); setGhErr(null); }}
-                className="mt-1 w-full bg-background border border-border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand"
-                placeholder="ghp_..."
-              />
-              <p className="mt-2 text-xs text-muted-foreground">
-                Needs <code>repo</code> scope. Create one at github.com/settings/tokens
-              </p>
-              <div className="mt-3 flex items-center gap-3">
-                <button onClick={testGhBtn} disabled={busy || !ghToken.trim()}
-                  className="px-4 py-2 border border-border rounded text-sm hover:border-foreground disabled:opacity-50">
-                  Test token
-                </button>
-                {ghLogin && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> @{ghLogin}</span>}
-                {ghErr && <span className="text-error text-sm flex items-center gap-1"><X className="h-4 w-4" /> {ghErr}</span>}
-              </div>
-              <button onClick={finishStep3} disabled={busy || !ghLogin}
-                className="mt-8 w-full bg-brand text-primary-foreground font-medium py-2.5 rounded text-sm hover:opacity-90 disabled:opacity-50">
-                Finish
-              </button>
-            </>
+            <div className="text-center py-4">
+              {ghUsername ? (
+                <>
+                  <div className="mx-auto h-16 w-16 rounded-full bg-success/10 flex items-center justify-center mb-4">
+                    <Check className="h-8 w-8 text-success" />
+                  </div>
+                  <h2 className="text-lg font-semibold">GitHub connected!</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Welcome, <span className="text-foreground font-medium">@{ghUsername}</span> 🎉
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-4">Taking you to your dashboard...</p>
+                </>
+              ) : (
+                <>
+                  <div className="mx-auto h-20 w-20 rounded-full bg-foreground/5 flex items-center justify-center mb-5">
+                    <Github className="h-10 w-10" />
+                  </div>
+                  <h2 className="text-xl font-semibold">Connect your GitHub</h2>
+                  <p className="text-sm text-muted-foreground mt-2 max-w-sm mx-auto">
+                    This links your code so YoFounder can manage your projects. One click.
+                  </p>
+                  <button
+                    onClick={connectGithub}
+                    disabled={ghBusy}
+                    className="mt-6 w-full bg-brand text-primary-foreground font-semibold py-3 rounded-lg text-base hover:opacity-90 disabled:opacity-50 inline-flex items-center justify-center gap-2"
+                  >
+                    <Github className="h-5 w-5" />
+                    {ghBusy ? "Connecting..." : "Connect GitHub"}
+                  </button>
+                  <p className="text-xs text-muted-foreground mt-4">
+                    We never post or change anything without your approval.
+                  </p>
+                </>
+              )}
+            </div>
           )}
         </div>
       </div>
