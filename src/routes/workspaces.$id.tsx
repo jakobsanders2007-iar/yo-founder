@@ -888,6 +888,11 @@ function CodeTab({ ws, workspaceId, user }: any) {
         selectedId={selected?.id}
         onSelect={(p) => { setSelected(p); setPromptText(p.content ?? ""); }}
         onNew={() => startNewPrompt("")}
+        onDelete={async (id) => {
+          const { error } = await supabase.from("prompts").delete().eq("id", id);
+          if (error) toast.error(error.message);
+          else if (selected?.id === id) { setSelected(null); setPromptText(""); }
+        }}
       />
 
       <SubTabBar value={subTab} onChange={setSubTab} />
@@ -1003,8 +1008,8 @@ function CodeTopBar({ ws, status, canApprove, onApprove }: any) {
 }
 
 /* ---------- Drafts bar (horizontal scroll, mobile-friendly) ---------- */
-function DraftsBar({ prompts, selectedId, onSelect, onNew }: {
-  prompts: any[]; selectedId?: string; onSelect: (p: any) => void; onNew: () => void;
+function DraftsBar({ prompts, selectedId, onSelect, onNew, onDelete }: {
+  prompts: any[]; selectedId?: string; onSelect: (p: any) => void; onNew: () => void; onDelete: (id: string) => void;
 }) {
   const recent = prompts.slice(0, 20);
   return (
@@ -1022,23 +1027,34 @@ function DraftsBar({ prompts, selectedId, onSelect, onNew }: {
           const active = p.id === selectedId;
           const isDraft = p.status === "draft";
           return (
-            <button
+            <div
               key={p.id}
-              onClick={() => onSelect(p)}
               className={cn(
-                "shrink-0 inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border transition max-w-[180px]",
+                "shrink-0 inline-flex items-center gap-1 text-xs rounded border transition max-w-[180px] group",
                 active
                   ? "border-amber-500/60 bg-amber-500/10 text-foreground"
                   : "border-[#1e1e1e] bg-[#111] text-muted-foreground hover:text-foreground hover:border-[#2a2a2a]"
               )}
               title={p.title}
             >
-              <span className={cn(
-                "h-1.5 w-1.5 rounded-full shrink-0",
-                isDraft ? "bg-muted-foreground" : p.status === "pr_opened" ? "bg-amber-500" : p.status === "deployed" ? "bg-emerald-500" : "bg-blue-500"
-              )} />
-              <span className="truncate">{p.title || "Untitled"}</span>
-            </button>
+              <button
+                onClick={() => onSelect(p)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 truncate"
+              >
+                <span className={cn(
+                  "h-1.5 w-1.5 rounded-full shrink-0",
+                  isDraft ? "bg-muted-foreground" : p.status === "pr_opened" ? "bg-amber-500" : p.status === "deployed" ? "bg-emerald-500" : "bg-blue-500"
+                )} />
+                <span className="truncate">{p.title || "Untitled"}</span>
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onDelete(p.id); }}
+                className="mr-1.5 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/20 hover:text-red-400 transition"
+                title="Delete draft"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
           );
         })
       )}
