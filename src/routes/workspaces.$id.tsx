@@ -437,7 +437,7 @@ function CodeTab({ ws, workspaceId, user }: any) {
       }
       setJobs(map);
       const act = (data ?? []).find((j: any) =>
-        ["queued", "cloning", "coding", "committing"].includes(j.status)
+        ["queued", "reading", "cloning", "coding", "committing"].includes(j.status)
       );
       setActiveWsJob((act as Job) ?? null);
     })();
@@ -457,7 +457,7 @@ function CodeTab({ ws, workspaceId, user }: any) {
             }
             return next;
           });
-          if (["queued", "cloning", "coding", "committing"].includes(row.status)) {
+          if (["queued", "reading", "cloning", "coding", "committing"].includes(row.status)) {
             setActiveWsJob(row);
           } else {
             setActiveWsJob((cur) => (cur && cur.id === row.id ? null : cur));
@@ -473,7 +473,7 @@ function CodeTab({ ws, workspaceId, user }: any) {
   }, [selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const job = selected ? jobs[selected.id] : null;
-  const isJobRunning = !!job && ["queued", "cloning", "coding", "committing"].includes(job.status);
+  const isJobRunning = !!job && ["queued", "reading", "cloning", "coding", "committing"].includes(job.status);
   const blockedByOther = !!activeWsJob && (!job || activeWsJob.id !== job.id);
 
   const newBlank = async () => {
@@ -530,7 +530,7 @@ function CodeTab({ ws, workspaceId, user }: any) {
   // Combine prompt status with live job status for display
   const displayStatus = (p: any) => {
     const j = jobs[p.id];
-    if (j && ["queued", "cloning", "coding", "committing", "failed"].includes(j.status)) return j.status;
+    if (j && ["queued", "reading", "cloning", "coding", "committing", "failed"].includes(j.status)) return j.status;
     if (j && j.status === "pr_opened") return "pr_opened";
     return p.status;
   };
