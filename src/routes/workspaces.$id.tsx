@@ -672,9 +672,7 @@ function JobPanel({ job, repo }: { job: Job; repo: string | null }) {
 
       <ul className="space-y-1.5 mb-3">
         {STEPS.map((s, i) => {
-          const state = failed && i === Math.max(0, ["cloning", "coding", "committing", "pr_opened"].indexOf(job.status === "failed" ? "coding" : job.status))
-            ? "error"
-            : stepState(job.status, i);
+          const state = failed ? (i === 0 ? "error" : "idle") : stepState(job.status, i);
           const Icon = state === "done" ? Check
             : state === "active" ? Loader2
             : state === "error" ? AlertCircle
