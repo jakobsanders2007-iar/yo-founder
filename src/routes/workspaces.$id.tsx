@@ -10,7 +10,7 @@ import {
 } from "@/lib/yofounder.functions";
 import {
   runClaudeCode, getGithubPRDetail, getRepoTree, getRepoFile,
-  approveAndPushPR, closeGithubPR, fetchVercelPreview,
+  approveAndPushPR, closeGithubPR, fetchVercelPreview, generateUiPreview,
 } from "@/lib/integrations.functions";
 import { toast } from "sonner";
 import {
@@ -344,10 +344,7 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
   const [typing, setTyping] = useState<{ name: string; provider: string; color: string } | null>(null);
   const [sending, setSending] = useState(false);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
-  const [showGenModal, setShowGenModal] = useState(false);
-  const [genResult, setGenResult] = useState<{ title: string; content: string } | null>(null);
   const [generating, setGenerating] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -453,28 +450,18 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
     setGenerating(true);
     try {
       const r = await genPrompt({ data: { workspaceId } });
-      setGenResult(r);
-      setShowGenModal(true);
+      const { error } = await supabase.from("prompts").insert({
+        workspace_id: workspaceId, created_by: user.id,
+        title: r.title, content: r.content, status: "draft",
+      });
+      if (error) throw error;
+      toast.success("Saved as draft in Code tab");
+      onPromptSaved?.();
     } catch (e: any) {
-      toast.error(e?.message ?? "Failed");
+      toast.error(e?.message ?? "Failed to generate");
     } finally {
       setGenerating(false);
     }
-  };
-
-  const saveGenerated = async () => {
-    if (!genResult) return;
-    setSaving(true);
-    const { error } = await supabase.from("prompts").insert({
-      workspace_id: workspaceId, created_by: user.id,
-      title: genResult.title, content: genResult.content, status: "ready",
-    });
-    setSaving(false);
-    if (error) return toast.error(error.message);
-    toast.success("Saved to Code tab");
-    onPromptSaved?.();
-    setShowGenModal(false);
-    setGenResult(null);
   };
 
   const doDelete = async (id: string) => {
@@ -618,28 +605,6 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
       </div>
 
 
-      {showGenModal && genResult && (
-        <Modal onClose={() => setShowGenModal(false)} title="Generated Claude Code Prompt">
-          <input
-            value={genResult.title}
-            onChange={(e) => setGenResult({ ...genResult, title: e.target.value })}
-            className="w-full bg-background border border-border rounded px-3 py-2 text-sm font-semibold mb-3"
-          />
-          <textarea
-            value={genResult.content}
-            onChange={(e) => setGenResult({ ...genResult, content: e.target.value })}
-            rows={16}
-            className="w-full bg-background border border-border rounded px-3 py-2 text-xs font-mono mb-4"
-          />
-          <div className="flex gap-2 justify-end">
-            <button onClick={() => setShowGenModal(false)} className="px-4 py-2 border border-border rounded text-sm hover:border-foreground">Cancel</button>
-            <button onClick={saveGenerated} disabled={saving} className="px-4 py-2 bg-brand text-primary-foreground rounded text-sm hover:opacity-90 disabled:opacity-50">
-              {saving ? "Saving..." : "Save to Code Tab"}
-            </button>
-          </div>
-        </Modal>
-      )}
-
       {confirmDelete && (
         <Modal title="Delete this message?" onClose={() => setConfirmDelete(null)}>
           <p className="text-sm text-muted-foreground mb-4">This action cannot be undone.</p>
@@ -667,7 +632,7 @@ type Job = {
   created_at?: string | null;
 };
 
-type SubTab = "preview" | "diff" | "files" | "logs";
+type SubTab = "preview" | "uipreview" | "diff" | "files" | "logs";
 
 type BuildStatus =
   | "waiting" | "thinking" | "building" | "saving"
@@ -928,6 +893,9 @@ function CodeTab({ ws, workspaceId, user }: any) {
             onAskAi={() => focusPrompt()}
           />
         )}
+        {subTab === "uipreview" && (
+          <UiPreviewPane prompt={selected} />
+        )}
         {subTab === "diff" && (
           <DiffPane prompt={selected} workspaceId={workspaceId} />
         )}
@@ -1031,6 +999,7 @@ function CodeTopBar({ ws, status, canApprove, onApprove }: any) {
 function SubTabBar({ value, onChange }: { value: SubTab; onChange: (v: SubTab) => void }) {
   const items: { key: SubTab; label: string; icon: any }[] = [
     { key: "preview", label: "Preview", icon: Eye },
+    { key: "uipreview", label: "UI Mockup", icon: Sparkles },
     { key: "diff", label: "Diff", icon: FileDiff },
     { key: "files", label: "Files", icon: FilesIcon },
     { key: "logs", label: "Logs", icon: Terminal },
@@ -1542,6 +1511,80 @@ function Modal({ onClose, title, children }: { onClose: () => void; title: strin
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
         </div>
         <div className="p-4">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- UI Mockup pane (AI-generated HTML preview) ---------- */
+function UiPreviewPane({ prompt }: { prompt: any }) {
+  const [busy, setBusy] = useState(false);
+  const [html, setHtml] = useState<string | null>(prompt?.ui_preview_html ?? null);
+  const genFn = useServerFn(generateUiPreview);
+
+  useEffect(() => {
+    setHtml(prompt?.ui_preview_html ?? null);
+  }, [prompt?.id, prompt?.ui_preview_html]);
+
+  const generate = async () => {
+    if (!prompt?.id) return toast.error("Pick or write a prompt first");
+    setBusy(true);
+    try {
+      const r = await genFn({ data: { promptId: prompt.id } });
+      setHtml(r.html);
+      toast.success("UI mockup ready");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Couldn't generate the mockup");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openInNewTab = () => {
+    if (!html) return;
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener,noreferrer");
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
+
+  if (!prompt) {
+    return (
+      <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+        Write or select a prompt to generate a UI mockup.
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full flex flex-col bg-[#0a0a0a]">
+      <div className="flex items-center justify-between gap-2 px-4 py-2 border-b border-[#1e1e1e]">
+        <div className="text-xs text-muted-foreground truncate">
+          AI-generated visual mockup for: <span className="text-foreground/90">{prompt.title}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={generate} disabled={busy}
+            className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded bg-amber-500 text-background font-medium hover:opacity-90 disabled:opacity-50">
+            <Sparkles className="h-3.5 w-3.5" />
+            {busy ? "Generating..." : html ? "Regenerate" : "Generate UI mockup"}
+          </button>
+          {html && (
+            <button onClick={openInNewTab}
+              className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-[#1e1e1e] text-foreground/90 hover:border-foreground">
+              <ExternalLink className="h-3.5 w-3.5" /> Open in new tab
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="flex-1 min-h-0 bg-white">
+        {html ? (
+          <iframe srcDoc={html} title="UI mockup" className="w-full h-full border-0"
+            sandbox="allow-scripts allow-same-origin allow-forms" />
+        ) : (
+          <div className="h-full flex items-center justify-center text-sm text-muted-foreground bg-[#0a0a0a]">
+            {busy ? "Designing your mockup..." : "Click \"Generate UI mockup\" to visualize this prompt before building."}
+          </div>
+        )}
       </div>
     </div>
   );

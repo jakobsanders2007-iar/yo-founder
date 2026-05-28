@@ -1,0 +1,1 @@
+ALTER TABLE public.prompts ADD COLUMN IF NOT EXISTS ui_preview_html text;

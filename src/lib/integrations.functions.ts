@@ -1062,22 +1062,19 @@ export const runClaudeCode = createServerFn({ method: "POST" })
       .from("prompts").select("id, title, content").eq("id", data.promptId).single();
     if (pErr || !prompt) throw new Error("Prompt not found");
 
-    // Load profile + secrets (keys live in profile_secrets, provider on profiles)
-    const [{ data: meProf }, secrets] = await Promise.all([
-      supabase.from("profiles").select("ai_provider").eq("id", userId).single(),
-      getProfileSecrets(userId),
-    ]);
-
-    const provider: "claude" | "gpt" | "gemini" =
-      (meProf?.ai_provider as any) ||
-      (secrets.anthropic_key ? "claude" : secrets.openai_key ? "gpt" : "gemini");
-
-    let aiKey: string | null =
-      provider === "claude" ? secrets.anthropic_key
-      : provider === "gpt" ? secrets.openai_key
-      : secrets.gemini_key;
-    if (!aiKey && provider === "gemini") aiKey = process.env.GEMINI_API_KEY ?? null;
-    if (!aiKey) throw new Error(`Add your ${provider === "claude" ? "Claude" : provider === "gpt" ? "OpenAI" : "Gemini"} API key in Settings to generate code.`);
+    // Use YoFounder's server-side keys — users don't need to bring their own
+    const secrets = await getProfileSecrets(userId).catch(() => ({} as any));
+    let provider: "claude" | "gpt" | "gemini";
+    let aiKey: string | null;
+    if (process.env.ANTHROPIC_API_KEY) {
+      provider = "claude"; aiKey = process.env.ANTHROPIC_API_KEY;
+    } else if (process.env.OPENAI_API_KEY) {
+      provider = "gpt"; aiKey = process.env.OPENAI_API_KEY;
+    } else if (process.env.GEMINI_API_KEY) {
+      provider = "gemini"; aiKey = process.env.GEMINI_API_KEY;
+    } else {
+      throw new Error("No server AI key configured. Add ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY to YoFounder secrets.");
+    }
 
     // GitHub is OPTIONAL — only used when a repo is connected
     let token: string | null = secrets.github_token ?? null;
@@ -1454,4 +1451,49 @@ export const fetchVercelPreview = createServerFn({ method: "POST" })
       await supabase.from("prompts").update({ vercel_preview_url: url }).eq("id", data.promptId);
     }
     return { url, configured: true };
+  });
+
+// ---------- Generate UI Preview HTML using server-side OpenAI key ----------
+export const generateUiPreview = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({ promptId: z.string().uuid() }).parse(input)
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase } = context as any;
+    const { data: prompt, error } = await supabase
+      .from("prompts").select("id, title, content").eq("id", data.promptId).single();
+    if (error || !prompt) throw new Error("Prompt not found");
+
+    const openaiKey = process.env.OPENAI_API_KEY;
+    const anthropicKey = process.env.ANTHROPIC_API_KEY;
+    const geminiKey = process.env.GEMINI_API_KEY;
+
+    const system = `You are a senior UI designer. Generate a single self-contained HTML document that visually mocks up the UI described below. Requirements:
+- Use only inline <style> + Tailwind CDN (<script src="https://cdn.tailwindcss.com"></script>).
+- Beautiful, modern, polished design (think Lovable / Linear / Vercel aesthetic).
+- Include realistic sample content (not lorem ipsum).
+- Fully responsive.
+- Return ONLY the raw HTML document starting with <!DOCTYPE html>. No markdown fences, no commentary.`;
+
+    const userText = `Title: ${prompt.title}\n\nDescription / requested change:\n${prompt.content}\n\nGenerate the HTML mockup now.`;
+
+    let html: string;
+    if (openaiKey) {
+      html = await callOpenAIRaw(openaiKey, system, userText, 6000);
+    } else if (anthropicKey) {
+      html = await callClaudeRaw(anthropicKey, system, userText, 6000);
+    } else if (geminiKey) {
+      html = await callGeminiRaw(geminiKey, system, userText, 6000);
+    } else {
+      throw new Error("No AI key configured on the server for UI preview generation.");
+    }
+
+    html = html.trim().replace(/^```html\s*/i, "").replace(/^```\s*/, "").replace(/```\s*$/, "").trim();
+    if (!/^<!doctype html/i.test(html) && !/^<html/i.test(html)) {
+      html = `<!DOCTYPE html><html><head><meta charset="utf-8"><script src="https://cdn.tailwindcss.com"></script></head><body>${html}</body></html>`;
+    }
+
+    await supabase.from("prompts").update({ ui_preview_html: html }).eq("id", data.promptId);
+    return { html };
   });
