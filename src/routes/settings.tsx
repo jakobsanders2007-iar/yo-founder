@@ -4,9 +4,9 @@ import { useServerFn } from "@tanstack/react-start";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { Logo } from "@/components/Logo";
-import { testAiKey, testGithubToken, saveAiKey, saveGithubToken } from "@/lib/yofounder.functions";
+import { testAiKey, saveAiKey } from "@/lib/yofounder.functions";
 import { toast } from "sonner";
-import { ArrowLeft, Check, Eye, EyeOff, X } from "lucide-react";
+import { ArrowLeft, Check, Eye, EyeOff, X, Github } from "lucide-react";
 
 const COLORS = ["#6366f1","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#f97316","#ec4899"];
 
