@@ -893,6 +893,9 @@ function CodeTab({ ws, workspaceId, user }: any) {
             onAskAi={() => focusPrompt()}
           />
         )}
+        {subTab === "uipreview" && (
+          <UiPreviewPane prompt={selected} />
+        )}
         {subTab === "diff" && (
           <DiffPane prompt={selected} workspaceId={workspaceId} />
         )}
