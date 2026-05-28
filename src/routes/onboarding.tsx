@@ -155,7 +155,7 @@ function OnboardingPage() {
                   const label = p === "claude" ? "Claude" : p === "gpt" ? "ChatGPT" : "Gemini";
                   const desc = p === "claude" ? "Great for coding and analysis"
                     : p === "gpt" ? "Great for writing and creativity"
-                    : "Google's AI — free to start";
+                    : "Free — no key needed ✓";
                   return (
                     <button key={p} onClick={() => { setProvider(p); setAiOk(null); setAiErr(null); }}
                       className={`p-4 border rounded text-left transition ${provider === p ? "bg-accent" : "border-border hover:border-muted-foreground"}`}
