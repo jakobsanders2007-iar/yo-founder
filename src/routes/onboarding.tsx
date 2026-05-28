@@ -81,12 +81,13 @@ function OnboardingPage() {
   };
 
   const finishStep2 = async () => {
-    if (!aiOk) return toast.error("Please test your key first");
+    if (provider !== "gemini" && !aiOk) return toast.error("Please test your key first");
     setBusy(true);
-    await saveAi({ data: { provider, apiKey: aiKey.trim() } });
+    await saveAi({ data: { provider, apiKey: provider === "gemini" ? "" : aiKey.trim() } });
     setBusy(false);
     setStep(3);
   };
+
 
   const connectGithub = async () => {
     setGhBusy(true);
