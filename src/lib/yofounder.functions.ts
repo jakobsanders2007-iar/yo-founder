@@ -125,11 +125,20 @@ export const testAiKey = createServerFn({ method: "POST" })
   .inputValidator((input) =>
     z.object({
       provider: z.enum(["claude", "gpt", "gemini"]),
-      apiKey: z.string().min(10).max(500),
+      apiKey: z.string().max(500).optional().default(""),
     }).parse(input)
   )
   .handler(async ({ data }) => {
     try {
+      if (data.provider === "gemini") {
+        const serverKey = process.env.GEMINI_API_KEY;
+        if (!serverKey) return { success: false as const, error: "Gemini is not enabled on the server yet" };
+        await callProvider("gemini", serverKey, "You are a test.", [{ role: "user", content: "Say OK" }], 10);
+        return { success: true as const };
+      }
+      if (!data.apiKey || data.apiKey.length < 10) {
+        return { success: false as const, error: "Please add a valid key" };
+      }
       await callProvider(data.provider, data.apiKey, "You are a test.", [{ role: "user", content: "Say OK" }], 10);
       return { success: true as const };
     } catch (e: any) {
