@@ -89,7 +89,7 @@ async function callOpenAI(apiKey: string, systemPrompt: string, history: ChatMsg
 }
 
 async function callGemini(apiKey: string, systemPrompt: string, history: ChatMsg[], maxTokens: number) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
   // Inline the system prompt into the conversation for broadest compatibility
   const fullConversation = [
     `System: ${systemPrompt}`,
