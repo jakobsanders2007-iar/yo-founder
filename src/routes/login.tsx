@@ -32,10 +32,12 @@ function LoginPage() {
   const continueWithGithub = async () => {
     setGhBusy(true);
     try {
+      const isProd = typeof window !== "undefined" && window.location.hostname === "yo-founder.com";
+      const redirectTo = isProd ? "https://yo-founder.com/dashboard" : `${window.location.origin}/dashboard`;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "github",
         options: {
-          redirectTo: `${window.location.origin}/dashboard`,
+          redirectTo,
           scopes: "repo read:user",
         },
       });
@@ -123,6 +125,12 @@ function LoginPage() {
             {mode === "signin" ? "Need an account? Sign up" : "Have an account? Sign in"}
           </button>
         </form>
+
+        <p className="mt-8 text-center text-xs text-muted-foreground">
+          <a href="https://yo-founder.com" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition">
+            yo-founder.com
+          </a>
+        </p>
       </div>
     </div>
   );

@@ -56,8 +56,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "YoFounder — Vibe code with your co-founder" },
-      { name: "description", content: "Two co-founders, two AIs, one workspace. Chat, debate, generate Claude Code prompts, ship to GitHub." },
+      { name: "description", content: "The multiplayer AI workspace for SaaS founders. Chat, code, and ship together." },
       { name: "theme-color", content: "#080808" },
+      { property: "og:site_name", content: "YoFounder" },
+      { property: "og:type", content: "website" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
