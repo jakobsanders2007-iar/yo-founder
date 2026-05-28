@@ -1,10 +1,10 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { lovable } from "@/integrations/lovable";
 import { useAuth } from "@/lib/auth";
 import { Logo } from "@/components/Logo";
 import { toast } from "sonner";
-import { Github } from "lucide-react";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
@@ -37,19 +37,16 @@ function LoginPage() {
     }
   }, [user, loading, navigate]);
 
-  const continueWithGithub = async () => {
+  const continueWithGoogle = async () => {
     setGhBusy(true);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "github",
-        options: {
-          redirectTo: window.location.origin + "/dashboard",
-          scopes: "repo read:user user:email",
-        },
+      const result = await lovable.auth.signInWithOAuth("google", {
+        redirect_uri: window.location.origin + "/dashboard",
       });
-      if (error) throw error;
+      if (result.error) throw result.error;
+      if (result.redirected) return;
     } catch {
-      toast.error("Couldn't connect GitHub right now — please try again or use email to sign in");
+      toast.error("Couldn't connect Google right now — please try again or use email to sign in");
       setGhBusy(false);
     }
   };
@@ -84,13 +81,19 @@ function LoginPage() {
         </div>
 
         <button
-          onClick={continueWithGithub}
+          onClick={continueWithGoogle}
           disabled={ghBusy}
           className="w-full bg-brand text-primary-foreground font-semibold py-3.5 rounded-lg text-base hover:opacity-90 disabled:opacity-50 transition inline-flex items-center justify-center gap-2.5 shadow-sm"
         >
-          <Github className="h-5 w-5" />
-          {ghBusy ? "Connecting..." : "Continue with GitHub"}
+          <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="#fff" d="M21.6 12.227c0-.708-.064-1.39-.182-2.045H12v3.868h5.382a4.6 4.6 0 0 1-1.995 3.018v2.51h3.232c1.89-1.742 2.981-4.305 2.981-7.35z"/>
+            <path fill="#fff" d="M12 22c2.7 0 4.964-.895 6.619-2.422l-3.232-2.51c-.896.6-2.04.955-3.387.955-2.605 0-4.81-1.76-5.598-4.124H3.064v2.59A9.997 9.997 0 0 0 12 22z" opacity=".85"/>
+            <path fill="#fff" d="M6.402 13.9a6.005 6.005 0 0 1 0-3.8V7.51H3.064a10.003 10.003 0 0 0 0 8.98l3.338-2.59z" opacity=".7"/>
+            <path fill="#fff" d="M12 5.977c1.468 0 2.786.505 3.823 1.496l2.868-2.868C16.96 2.99 14.697 2 12 2A9.997 9.997 0 0 0 3.064 7.51L6.402 10.1C7.19 7.736 9.395 5.977 12 5.977z" opacity=".55"/>
+          </svg>
+          {ghBusy ? "Connecting..." : "Continue with Google"}
         </button>
+
 
         <div className="flex items-center gap-3 my-5">
           <div className="flex-1 h-px bg-border" />
