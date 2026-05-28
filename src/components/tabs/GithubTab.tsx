@@ -165,7 +165,7 @@ export function GithubTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void 
                   className="text-xs text-muted-foreground hover:text-foreground">Cancel</button>
                 <button onClick={savePastedToken} disabled={ghBusy || !ghToken.trim()}
                   className="bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50">
-                  {ghBusy ? "Saving..." : "Store token"}
+                  {ghBusy ? "Connecting..." : "Connect"}
                 </button>
               </div>
               {ghState?.ok && <div className="mt-2 text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {ghState.msg}</div>}
@@ -189,7 +189,7 @@ export function GithubTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void 
           title={showRepoPicker ? "Change which code this workspace uses" : "Pick which code this workspace uses"}
           right={
             <div className="flex items-center gap-2">
-              <span className="text-xs text-success inline-flex items-center gap-1"><Check className="h-3 w-3" /> @{profile.github_username}</span>
+              <span className="text-xs text-success inline-flex items-center gap-1"><Check className="h-3 w-3" /> {profile.github_username ? `@${profile.github_username}` : "GitHub key stored"}</span>
               <button onClick={fetchRepos} disabled={loadingRepos} className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
                 <RefreshCw className={`h-3 w-3 ${loadingRepos ? "animate-spin" : ""}`} /> Refresh
               </button>
