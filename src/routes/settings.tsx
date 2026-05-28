@@ -70,10 +70,16 @@ function SettingsPage() {
         return;
       }
     }
-    await saveAi({ data: { provider, apiKey: provider === "gemini" ? "" : aiKey.trim() } });
+    try {
+      await saveAi({ data: { provider, apiKey: provider === "gemini" ? "" : aiKey.trim() } });
+    } catch (e: any) {
+      setAiBusy(false);
+      setAiState({ ok: false, msg: "Couldn't save — please try again" });
+      return;
+    }
     setAiBusy(false);
-    setAiKey("");
-    setAiState({ ok: true, msg: "Saved!" });
+    // Keep input value so user can verify what they saved; do NOT clear.
+    setAiState({ ok: true, msg: "Saved ✓" });
     setProfile((p: any) => ({
       ...p,
       ai_provider: provider,

@@ -1,8 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
-const CHAT_TOKENS = 200;
+const CHAT_TOKENS = 150;
 const PROMPT_TOKENS = 600;
 const TIMEOUT_MS = 25_000;
 
@@ -225,7 +226,8 @@ async function respondForUser(opts: {
   forUserId: string;
 }) {
   const { supabase, workspaceId, forUserId } = opts;
-  const { data: profile, error: pErr } = await supabase
+  // Read profile via admin (cofounder's keys not visible to caller via RLS)
+  const { data: profile, error: pErr } = await supabaseAdmin
     .from("profiles")
     .select("display_name, ai_provider, anthropic_key, openai_key, gemini_key")
     .eq("id", forUserId)
@@ -244,7 +246,8 @@ async function respondForUser(opts: {
   try {
     text = await callProvider(sel.provider, sel.key, buildSystemPrompt(profile.display_name || "the founder"), formatted, CHAT_TOKENS);
   } catch (e: any) {
-    await supabase.from("messages").insert({
+    // RLS blocks sender_type='ai' inserts from user client — use admin
+    await supabaseAdmin.from("messages").insert({
       workspace_id: workspaceId,
       sender_user_id: forUserId,
       sender_type: "ai",
@@ -255,7 +258,7 @@ async function respondForUser(opts: {
     return { ok: false, error: e?.message ?? "Unknown" };
   }
 
-  await supabase.from("messages").insert({
+  await supabaseAdmin.from("messages").insert({
     workspace_id: workspaceId,
     sender_user_id: forUserId,
     sender_type: "ai",
