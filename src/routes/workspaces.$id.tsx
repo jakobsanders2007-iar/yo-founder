@@ -637,13 +637,13 @@ function CodeTab({ ws, workspaceId, user }: any) {
       </div>
 
       {confirmRun && (
-        <Modal title="Run with Claude Code?" onClose={() => setConfirmRun(false)}>
+        <Modal title="Make this change?" onClose={() => setConfirmRun(false)}>
           <p className="text-sm text-muted-foreground mb-4">
-            Claude Code will clone your repo, implement this change, and open a PR on GitHub. Continue?
+            We'll read your code, make these changes, save them, and send them for your review. Sound good?
           </p>
           <div className="flex gap-2 justify-end">
-            <button onClick={() => setConfirmRun(false)} className="px-4 py-2 border border-border rounded text-sm hover:border-foreground">Cancel</button>
-            <button onClick={runJob} className="px-4 py-2 bg-amber-500 text-background rounded text-sm font-medium hover:opacity-90">Run</button>
+            <button onClick={() => setConfirmRun(false)} className="px-4 py-2 border border-border rounded text-sm hover:border-foreground">Not yet</button>
+            <button onClick={runJob} className="px-4 py-2 bg-amber-500 text-background rounded text-sm font-medium hover:opacity-90">Yes, do it</button>
           </div>
         </Modal>
       )}
