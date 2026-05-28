@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
@@ -30,6 +30,7 @@ function SettingsPage() {
   const [color, setColor] = useState(COLORS[0]);
   const [profBusy, setProfBusy] = useState(false);
   const [ghBusy, setGhBusy] = useState(false);
+  const [saveAllBusy, setSaveAllBusy] = useState(false);
 
   const [ghToken, setGhToken] = useState("");
   const [showGh, setShowGh] = useState(false);
@@ -71,62 +72,85 @@ function SettingsPage() {
     })();
   }, [user, loading, navigate]);
 
-  const handleAiSave = async () => {
-    if (provider !== "gemini" && !aiKey.trim()) return toast.error("Please add a key first");
-    setAiBusy(true); setAiState(null);
+  const hasProfileChanges = useMemo(
+    () => !!profile && (name.trim() !== (profile.display_name ?? "") || color !== (profile.avatar_color ?? COLORS[0])),
+    [profile, name, color],
+  );
 
-    // Save first — don't let a flaky test call block persistence.
+  const hasAiChanges = useMemo(
+    () => !!profile && (provider !== profile.ai_provider || !!aiKey.trim()),
+    [profile, provider, aiKey],
+  );
+
+  const hasGithubChanges = !!ghToken.trim();
+  const hasUnsavedChanges = hasProfileChanges || hasAiChanges || hasGithubChanges;
+
+  const persistAiSettings = async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? false;
+    if (!hasAiChanges) return { ok: true as const, saved: false as const };
+
+    setAiBusy(true);
+    setAiState(null);
+
     try {
       await saveAi({ data: { provider, apiKey: provider === "gemini" ? "" : aiKey.trim() } });
-    } catch (e: any) {
-      setAiBusy(false);
-      setAiState({ ok: false, msg: e?.message ?? "Couldn't save — please try again" });
-      return;
-    }
 
-    setProfile((p: any) => ({
-      ...p,
-      ai_provider: provider,
-      has_anthropic: provider === "claude" ? true : p?.has_anthropic,
-      has_openai: provider === "gpt" ? true : p?.has_openai,
-      has_gemini: provider === "gemini" ? true : p?.has_gemini,
-    }));
+      setProfile((p: any) => ({
+        ...p,
+        ai_provider: provider,
+        has_anthropic: provider === "claude" ? Boolean(aiKey.trim() || p?.has_anthropic) : p?.has_anthropic,
+        has_openai: provider === "gpt" ? Boolean(aiKey.trim() || p?.has_openai) : p?.has_openai,
+        has_gemini: provider === "gemini" ? true : p?.has_gemini,
+      }));
 
-    // Then verify it works — show a warning if not, but the key is already saved.
-    if (provider !== "gemini") {
-      const t = await testAi({ data: { provider, apiKey: aiKey.trim() } }).catch(() => ({ success: false as const, error: "Couldn't reach provider" }));
-      if (!t.success) {
-        setAiBusy(false);
-        setAiState({ ok: true, msg: "Saved ✓ — but the test call failed. Double-check the key works." });
-        toast.success("Key saved (test failed — verify it)");
-        return;
+      if (provider !== "gemini" && aiKey.trim()) {
+        const t = await testAi({ data: { provider, apiKey: aiKey.trim() } }).catch(() => ({ success: false as const }));
+        if (!t.success) {
+          setAiState({ ok: true, msg: "Saved ✓ — but the test call failed. Double-check the key works." });
+          if (!silent) toast.success("Key saved (test failed — verify it)");
+          return { ok: true as const, saved: true as const };
+        }
       }
-    }
 
-    setAiBusy(false);
-    setAiState({ ok: true, msg: "Saved ✓" });
-    toast.success("AI saved ✓");
+      setAiKey("");
+      setAiState({ ok: true, msg: "Saved ✓" });
+      if (!silent) toast.success("AI saved ✓");
+      return { ok: true as const, saved: true as const };
+    } catch (e: any) {
+      setAiState({ ok: false, msg: e?.message ?? "Couldn't save — please try again" });
+      if (!silent) toast.error("Couldn't save AI settings");
+      return { ok: false as const, saved: true as const };
+    } finally {
+      setAiBusy(false);
+    }
   };
 
-  const saveGithubFromToken = async () => {
-    if (!ghToken.trim()) return toast.error("Paste a GitHub token first");
-    setGhBusy(true); setGhState(null);
+  const saveGithubFromToken = async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? false;
+    if (!ghToken.trim()) return { ok: true as const, saved: false as const };
+
+    setGhBusy(true);
+    setGhState(null);
     try {
       const t = await testGh({ data: { token: ghToken.trim() } });
       if (!t.success) {
-        setGhBusy(false);
         setGhState({ ok: false, msg: "That token didn't work — check it has `repo` + `read:user` scopes" });
-        return;
+        if (!silent) toast.error("GitHub token didn't work");
+        return { ok: false as const, saved: true as const };
       }
+
       await saveGh({ data: { token: ghToken.trim(), login: t.login } });
-      setGhBusy(false);
       setGhState({ ok: true, msg: `Connected as @${t.login} ✓` });
       setProfile((p: any) => ({ ...p, github_username: t.login, has_github: true }));
       setGhToken("");
-      toast.success(`GitHub connected as @${t.login}`);
+      if (!silent) toast.success(`GitHub connected as @${t.login}`);
+      return { ok: true as const, saved: true as const };
     } catch (e: any) {
-      setGhBusy(false);
       setGhState({ ok: false, msg: e?.message ?? "Couldn't save — please try again" });
+      if (!silent) toast.error("Couldn't save GitHub settings");
+      return { ok: false as const, saved: true as const };
+    } finally {
+      setGhBusy(false);
     }
   };
 
@@ -138,15 +162,50 @@ function SettingsPage() {
     toast.success("GitHub disconnected");
   };
 
-  const handleProfileSave = async () => {
-    if (!name.trim()) return toast.error("Please add your name");
+  const handleProfileSave = async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? false;
+    if (!hasProfileChanges) return { ok: true as const, saved: false as const };
+    if (!name.trim()) {
+      if (!silent) toast.error("Please add your name");
+      return { ok: false as const, saved: false as const };
+    }
+
     setProfBusy(true);
     const { error } = await supabase.from("profiles")
       .update({ display_name: name.trim(), avatar_color: color })
       .eq("id", user!.id);
     setProfBusy(false);
-    if (error) return toast.error("Couldn't save — please try again");
-    toast.success("Profile saved ✓");
+
+    if (error) {
+      if (!silent) toast.error("Couldn't save — please try again");
+      return { ok: false as const, saved: true as const };
+    }
+
+    setProfile((p: any) => ({ ...p, display_name: name.trim(), avatar_color: color }));
+    if (!silent) toast.success("Profile saved ✓");
+    return { ok: true as const, saved: true as const };
+  };
+
+  const handleSaveAll = async () => {
+    if (!hasUnsavedChanges) return toast.message("No changes to save");
+
+    setSaveAllBusy(true);
+
+    const [profileResult, aiResult, githubResult] = await Promise.all([
+      handleProfileSave({ silent: true }),
+      persistAiSettings({ silent: true }),
+      saveGithubFromToken({ silent: true }),
+    ]);
+
+    setSaveAllBusy(false);
+
+    const failed = [profileResult.ok, aiResult.ok, githubResult.ok].some((ok) => !ok);
+    if (failed) {
+      toast.error("Some settings could not be saved — check the highlighted section");
+      return;
+    }
+
+    toast.success("All settings saved ✓");
   };
 
   if (!profile) return <div className="min-h-screen bg-background flex items-center justify-center text-sm text-muted-foreground">Loading...</div>;
