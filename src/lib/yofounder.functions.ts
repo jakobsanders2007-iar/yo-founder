@@ -242,7 +242,7 @@ async function respondForUser(opts: {
   const profileWithKeys = { ...profile, ...(secrets ?? {}) };
 
 
-  const sel = keyForProvider(profile);
+  const sel = keyForProvider(profileWithKeys);
   if (!sel) {
     return { ok: false, error: "No AI key configured" };
   }
@@ -253,6 +253,7 @@ async function respondForUser(opts: {
   let text: string;
   try {
     text = await callProvider(sel.provider, sel.key, buildSystemPrompt(profile.display_name || "the founder"), formatted, CHAT_TOKENS);
+
   } catch (e: any) {
     // RLS blocks sender_type='ai' inserts from user client — use admin
     await supabaseAdmin.from("messages").insert({
