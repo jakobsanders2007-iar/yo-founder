@@ -60,15 +60,17 @@ function SettingsPage() {
   }, [user, loading, navigate]);
 
   const handleAiSave = async () => {
-    if (!aiKey.trim()) return toast.error("Please add a key first");
+    if (provider !== "gemini" && !aiKey.trim()) return toast.error("Please add a key first");
     setAiBusy(true); setAiState(null);
-    const t = await testAi({ data: { provider, apiKey: aiKey.trim() } });
-    if (!t.success) {
-      setAiBusy(false);
-      setAiState({ ok: false, msg: "That key didn't work — please double-check it" });
-      return;
+    if (provider !== "gemini") {
+      const t = await testAi({ data: { provider, apiKey: aiKey.trim() } });
+      if (!t.success) {
+        setAiBusy(false);
+        setAiState({ ok: false, msg: "That key didn't work — please double-check it" });
+        return;
+      }
     }
-    await saveAi({ data: { provider, apiKey: aiKey.trim() } });
+    await saveAi({ data: { provider, apiKey: provider === "gemini" ? "" : aiKey.trim() } });
     setAiBusy(false);
     setAiKey("");
     setAiState({ ok: true, msg: "Saved!" });
@@ -88,13 +90,13 @@ function SettingsPage() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "github",
         options: {
-          redirectTo: `${window.location.origin}/settings`,
-          scopes: "repo read:user",
+          redirectTo: window.location.origin + "/dashboard",
+          scopes: "repo read:user user:email",
         },
       });
       if (error) throw error;
     } catch {
-      toast.error("Something went wrong connecting GitHub — please try again");
+      toast.error("Couldn't connect GitHub right now — please try again or use email to sign in");
       setGhBusy(false);
     }
   };
@@ -201,39 +203,56 @@ function SettingsPage() {
               );
             })}
           </div>
-          <label className="text-xs text-muted-foreground">
-            {provider === "claude" ? "Anthropic secret key" : provider === "gpt" ? "OpenAI secret key" : "Google AI key"}
-          </label>
-          <div className="mt-1 relative">
-            <input
-              type={showAi ? "text" : "password"}
-              value={aiKey}
-              onChange={(e) => { setAiKey(e.target.value); setAiState(null); }}
-              className="w-full bg-background border border-border rounded px-3 py-2 pr-10 text-sm font-mono focus:outline-none focus:border-brand"
-              placeholder={provider === "claude" ? "sk-ant-..." : provider === "gpt" ? "sk-..." : "AIza..."}
-            />
-            <button type="button" onClick={() => setShowAi((s) => !s)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-              {showAi ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
-          {provider === "gemini" && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              Get your free key at{" "}
-              <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-brand hover:underline">
-                aistudio.google.com →
-              </a>
-            </p>
+          {provider === "gemini" ? (
+            <div className="p-4 bg-background border border-border rounded">
+              <div className="text-sm font-medium text-success flex items-center gap-1.5">
+                <Check className="h-4 w-4" /> Free — no key needed
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Gemini runs on YoFounder's server. Just click below to use it.
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-2">
+                Admin note: add <code className="font-mono">GEMINI_API_KEY</code> to your Supabase edge function secrets to enable Gemini for users.
+              </p>
+              <div className="mt-3 flex items-center gap-3">
+                <button onClick={handleAiSave} disabled={aiBusy}
+                  className="bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50">
+                  {aiBusy ? "Saving..." : "Use Gemini"}
+                </button>
+                {aiState?.ok && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {aiState.msg}</span>}
+                {aiState && !aiState.ok && <span className="text-error text-sm flex items-center gap-1"><X className="h-4 w-4" /> {aiState.msg}</span>}
+              </div>
+            </div>
+          ) : (
+            <>
+              <label className="text-xs text-muted-foreground">
+                {provider === "claude" ? "Anthropic secret key" : "OpenAI secret key"}
+              </label>
+              <div className="mt-1 relative">
+                <input
+                  type={showAi ? "text" : "password"}
+                  value={aiKey}
+                  onChange={(e) => { setAiKey(e.target.value); setAiState(null); }}
+                  className="w-full bg-background border border-border rounded px-3 py-2 pr-10 text-sm font-mono focus:outline-none focus:border-brand"
+                  placeholder={provider === "claude" ? "sk-ant-..." : "sk-..."}
+                />
+                <button type="button" onClick={() => setShowAi((s) => !s)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  {showAi ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              <div className="mt-3 flex items-center gap-3">
+                <button onClick={handleAiSave} disabled={aiBusy || !aiKey.trim()}
+                  className="bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50">
+                  {aiBusy ? "Testing..." : "Test & Save"}
+                </button>
+                {aiState?.ok && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {aiState.msg}</span>}
+                {aiState && !aiState.ok && <span className="text-error text-sm flex items-center gap-1"><X className="h-4 w-4" /> {aiState.msg}</span>}
+              </div>
+            </>
           )}
-          <div className="mt-3 flex items-center gap-3">
-            <button onClick={handleAiSave} disabled={aiBusy || !aiKey.trim()}
-              className="bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50">
-              {aiBusy ? "Testing..." : "Test & Save"}
-            </button>
-            {aiState?.ok && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {aiState.msg}</span>}
-            {aiState && !aiState.ok && <span className="text-error text-sm flex items-center gap-1"><X className="h-4 w-4" /> {aiState.msg}</span>}
-          </div>
         </section>
+
 
         {/* Profile */}
         <section className="bg-surface border border-border rounded-lg p-6">

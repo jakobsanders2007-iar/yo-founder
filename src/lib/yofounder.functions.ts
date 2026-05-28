@@ -79,20 +79,19 @@ async function callOpenAI(apiKey: string, systemPrompt: string, history: ChatMsg
 }
 
 async function callGemini(apiKey: string, systemPrompt: string, history: ChatMsg[], maxTokens: number) {
-  // Use v1beta gemini-1.5-flash (gemini-pro is deprecated for new keys)
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const contents = history.map((m) => ({
-    role: m.role === "assistant" ? "model" : "user",
-    parts: [{ text: m.content }],
-  }));
+  // Inline the system prompt into the conversation for broadest compatibility
+  const fullConversation = [
+    `System: ${systemPrompt}`,
+    ...history.map((m) => `${m.role === "assistant" ? "Assistant" : "User"}: ${m.content}`),
+  ].join("\n\n");
   const res = await withTimeout((signal) =>
     fetch(url, {
       method: "POST",
       signal,
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents,
+        contents: [{ parts: [{ text: fullConversation }] }],
         generationConfig: { maxOutputTokens: maxTokens },
       }),
     })
@@ -126,11 +125,20 @@ export const testAiKey = createServerFn({ method: "POST" })
   .inputValidator((input) =>
     z.object({
       provider: z.enum(["claude", "gpt", "gemini"]),
-      apiKey: z.string().min(10).max(500),
+      apiKey: z.string().max(500).optional().default(""),
     }).parse(input)
   )
   .handler(async ({ data }) => {
     try {
+      if (data.provider === "gemini") {
+        const serverKey = process.env.GEMINI_API_KEY;
+        if (!serverKey) return { success: false as const, error: "Gemini is not enabled on the server yet" };
+        await callProvider("gemini", serverKey, "You are a test.", [{ role: "user", content: "Say OK" }], 10);
+        return { success: true as const };
+      }
+      if (!data.apiKey || data.apiKey.length < 10) {
+        return { success: false as const, error: "Please add a valid key" };
+      }
       await callProvider(data.provider, data.apiKey, "You are a test.", [{ role: "user", content: "Say OK" }], 10);
       return { success: true as const };
     } catch (e: any) {
@@ -192,10 +200,12 @@ function buildHistoryForProvider(history: any[], myUserId: string): ChatMsg[] {
 function keyForProvider(profile: any): { provider: Provider; key: string } | null {
   const p = profile?.ai_provider as Provider | null;
   if (!p) return null;
-  const k =
-    p === "claude" ? profile.anthropic_key :
-    p === "gpt" ? profile.openai_key :
-    profile.gemini_key;
+  if (p === "gemini") {
+    const k = process.env.GEMINI_API_KEY;
+    if (!k) return null;
+    return { provider: "gemini", key: k };
+  }
+  const k = p === "claude" ? profile.anthropic_key : profile.openai_key;
   if (!k) return null;
   return { provider: p, key: k };
 }
@@ -289,10 +299,10 @@ export const generatePrompt = createServerFn({ method: "POST" })
 
     let sel = keyForProvider(me ?? {});
     if (!sel) {
-      // any provider key on profile
+      // any provider key on profile, or gemini server key
       if (me?.anthropic_key) sel = { provider: "claude", key: me.anthropic_key };
       else if (me?.openai_key) sel = { provider: "gpt", key: me.openai_key };
-      else if (me?.gemini_key) sel = { provider: "gemini", key: me.gemini_key };
+      else if (process.env.GEMINI_API_KEY) sel = { provider: "gemini", key: process.env.GEMINI_API_KEY };
     }
     if (!sel) throw new Error("No AI key available to generate a prompt");
 
@@ -395,15 +405,20 @@ export const saveAiKey = createServerFn({ method: "POST" })
   .inputValidator((input) =>
     z.object({
       provider: z.enum(["claude", "gpt", "gemini"]),
-      apiKey: z.string().min(10).max(500),
+      apiKey: z.string().max(500).optional().default(""),
     }).parse(input)
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context as any;
     const payload: any = { id: userId, ai_provider: data.provider };
-    if (data.provider === "claude") payload.anthropic_key = data.apiKey;
-    else if (data.provider === "gpt") payload.openai_key = data.apiKey;
-    else payload.gemini_key = data.apiKey;
+    if (data.provider === "claude") {
+      if (!data.apiKey || data.apiKey.length < 10) throw new Error("Missing key");
+      payload.anthropic_key = data.apiKey;
+    } else if (data.provider === "gpt") {
+      if (!data.apiKey || data.apiKey.length < 10) throw new Error("Missing key");
+      payload.openai_key = data.apiKey;
+    }
+    // gemini: no user key needed, server uses GEMINI_API_KEY
     const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "id" });
     if (error) throw new Error(error.message);
     return { ok: true };
