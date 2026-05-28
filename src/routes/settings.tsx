@@ -208,6 +208,18 @@ function SettingsPage() {
     toast.success("All settings saved ✓");
   };
 
+  const handleAiSaveClick = () => {
+    void persistAiSettings();
+  };
+
+  const handleGithubSaveClick = () => {
+    void saveGithubFromToken();
+  };
+
+  const handleProfileSaveClick = () => {
+    void handleProfileSave();
+  };
+
   if (!profile) return <div className="min-h-screen bg-background flex items-center justify-center text-sm text-muted-foreground">Loading...</div>;
 
   return (
