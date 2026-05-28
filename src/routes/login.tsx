@@ -26,7 +26,15 @@ function LoginPage() {
   const [ghBusy, setGhBusy] = useState(false);
 
   useEffect(() => {
-    if (!loading && user) navigate({ to: "/dashboard" });
+    if (!loading && user) {
+      const pendingInvite = typeof window !== "undefined" ? sessionStorage.getItem("pending_invite") : null;
+      if (pendingInvite) {
+        sessionStorage.removeItem("pending_invite");
+        navigate({ to: "/invite/$token", params: { token: pendingInvite } });
+      } else {
+        navigate({ to: "/dashboard" });
+      }
+    }
   }, [user, loading, navigate]);
 
   const continueWithGithub = async () => {
