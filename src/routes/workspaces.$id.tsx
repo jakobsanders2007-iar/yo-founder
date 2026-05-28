@@ -249,6 +249,7 @@ function InviteModal({ workspaceId, workspaceName, onClose }: { workspaceId: str
 /* ============ CHAT TAB ============ */
 function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
   const [messages, setMessages] = useState<any[]>([]);
+  const [reactions, setReactions] = useState<Record<string, any[]>>({});
   const [text, setText] = useState("");
   const [typing, setTyping] = useState<{ name: string; provider: string; color: string } | null>(null);
   const [sending, setSending] = useState(false);
@@ -258,7 +259,9 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const respondSender = useServerFn(respondAsSenderAi);
   const respondCofounder = useServerFn(respondAsCofounderAi);
@@ -270,24 +273,54 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
     return m;
   }, [members]);
 
+  const memberNames = useMemo(
+    () => members.map((m: any) => m.profiles?.display_name).filter(Boolean),
+    [members]
+  );
+
+  const loadReactions = useCallback(async (messageIds: string[]) => {
+    if (!messageIds.length) return;
+    const { data } = await supabase
+      .from("message_reactions")
+      .select("id, message_id, emoji, user_id")
+      .in("message_id", messageIds);
+    const grouped: Record<string, any[]> = {};
+    for (const r of data ?? []) {
+      (grouped[r.message_id] ||= []).push(r);
+    }
+    setReactions(grouped);
+  }, []);
+
   useEffect(() => {
     (async () => {
       const { data } = await supabase.from("messages")
         .select("*").eq("workspace_id", workspaceId).order("created_at").limit(200);
-      setMessages(data ?? []);
+      const msgs = data ?? [];
+      setMessages(msgs);
+      loadReactions(msgs.map((m) => m.id));
     })();
     const channel = supabase.channel(`ws-${workspaceId}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `workspace_id=eq.${workspaceId}` },
         (payload) => setMessages((prev) => [...prev, payload.new]))
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages", filter: `workspace_id=eq.${workspaceId}` },
         (payload) => setMessages((prev) => prev.filter((m) => m.id !== (payload.old as any).id)))
+      .on("postgres_changes", { event: "*", schema: "public", table: "message_reactions" },
+        async (payload) => {
+          const row = (payload.new ?? payload.old) as any;
+          if (!row?.message_id) return;
+          // Reload reactions for that message
+          const { data } = await supabase.from("message_reactions")
+            .select("id, message_id, emoji, user_id").eq("message_id", row.message_id);
+          setReactions((prev) => ({ ...prev, [row.message_id]: data ?? [] }));
+        })
       .on("broadcast", { event: "typing" }, (p) => {
         setTyping(p.payload as any);
         setTimeout(() => setTyping(null), 4000);
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [workspaceId]);
+  }, [workspaceId, loadReactions]);
+
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
