@@ -642,6 +642,17 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
     </div>
   );
 }
+        <Modal title="Delete this message?" onClose={() => setConfirmDelete(null)}>
+          <p className="text-sm text-muted-foreground mb-4">This action cannot be undone.</p>
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => setConfirmDelete(null)} className="px-4 py-2 border border-border rounded text-sm hover:border-foreground">Cancel</button>
+            <button onClick={() => doDelete(confirmDelete)} className="px-4 py-2 bg-error text-primary-foreground rounded text-sm hover:opacity-90">Delete</button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
 
 /* ============ CODE TAB ============ */
 type Job = {
