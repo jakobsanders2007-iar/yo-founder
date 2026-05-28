@@ -96,7 +96,29 @@ export function GithubTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void 
   const hasToken = !!profile?.github_token;
   const hasRepo = !!ws.github_repo;
 
-  // ───────── Not connected: OAuth button only ─────────
+  const savePastedToken = async () => {
+    if (!ghToken.trim()) return toast.error("Paste a GitHub token first");
+    setGhBusy(true); setGhState(null);
+    try {
+      const t = await testGh({ data: { token: ghToken.trim() } });
+      if (!t.success) {
+        setGhBusy(false);
+        setGhState({ ok: false, msg: "That token didn't work — check it has `repo` + `read:user` scopes" });
+        return;
+      }
+      await saveGh({ data: { token: ghToken.trim(), login: t.login } });
+      setProfile((p: any) => ({ ...(p ?? {}), github_username: t.login, github_token: ghToken.trim() }));
+      setGhToken("");
+      setShowTokenForm(false);
+      toast.success(`GitHub connected as @${t.login}`);
+    } catch (e: any) {
+      setGhState({ ok: false, msg: e?.message ?? "Couldn't save — please try again" });
+    } finally {
+      setGhBusy(false);
+    }
+  };
+
+  // ───────── Not connected: OAuth + token paste ─────────
   if (!hasToken) {
     return (
       <div className="p-6 max-w-2xl mx-auto">
@@ -106,7 +128,7 @@ export function GithubTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void 
           </div>
           <h2 className="text-xl font-semibold">Connect your GitHub</h2>
           <p className="text-sm text-muted-foreground mt-2 max-w-sm mx-auto">
-            This links your code so YoFounder can manage your projects. One click.
+            This links your code so YoFounder can manage your projects.
           </p>
           <button
             onClick={connectGithub}
@@ -114,8 +136,49 @@ export function GithubTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void 
             className="mt-6 bg-brand text-primary-foreground font-semibold px-6 py-3 rounded-lg text-base hover:opacity-90 disabled:opacity-50 inline-flex items-center justify-center gap-2"
           >
             <Github className="h-5 w-5" />
-            {ghBusy ? "Connecting..." : "Connect GitHub"}
+            {ghBusy ? "Connecting..." : "Connect with GitHub"}
           </button>
+
+          <div className="mt-6 text-xs text-muted-foreground">or</div>
+
+          {!showTokenForm ? (
+            <button
+              onClick={() => setShowTokenForm(true)}
+              className="mt-3 text-sm border border-border rounded-lg px-4 py-2 hover:border-foreground inline-flex items-center gap-2"
+            >
+              <KeyRound className="h-4 w-4" /> Paste a personal access token
+            </button>
+          ) : (
+            <div className="mt-4 text-left">
+              <p className="text-xs text-muted-foreground mb-2">
+                Create a <a href="https://github.com/settings/tokens/new?scopes=repo,read:user&description=YoFounder" target="_blank" rel="noreferrer" className="text-brand underline">token</a> with <code className="font-mono">repo</code> + <code className="font-mono">read:user</code> scopes.
+              </p>
+              <div className="relative">
+                <input
+                  type={showGh ? "text" : "password"}
+                  value={ghToken}
+                  onChange={(e) => { setGhToken(e.target.value); setGhState(null); }}
+                  placeholder="ghp_... or github_pat_..."
+                  className="w-full bg-background border border-border rounded px-3 py-2 pr-10 text-sm font-mono focus:outline-none focus:border-brand"
+                />
+                <button type="button" onClick={() => setShowGh((s) => !s)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  {showGh ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <button onClick={() => { setShowTokenForm(false); setGhState(null); setGhToken(""); }}
+                  className="text-xs text-muted-foreground hover:text-foreground">Cancel</button>
+                <button onClick={savePastedToken} disabled={ghBusy || !ghToken.trim()}
+                  className="bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50">
+                  {ghBusy ? "Saving..." : "Save token"}
+                </button>
+              </div>
+              {ghState?.ok && <div className="mt-2 text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {ghState.msg}</div>}
+              {ghState && !ghState.ok && <div className="mt-2 text-error text-sm flex items-center gap-1"><X className="h-4 w-4" /> {ghState.msg}</div>}
+            </div>
+          )}
+
           <p className="text-xs text-muted-foreground mt-4">
             We never post or change anything without your approval.
           </p>
