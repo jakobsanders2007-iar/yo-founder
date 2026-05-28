@@ -7,12 +7,12 @@ import { Logo } from "@/components/Logo";
 import { Avatar } from "@/components/UserAvatar";
 import {
   respondAsSenderAi, generatePrompt,
-  createGithubIssue,
 } from "@/lib/yofounder.functions";
+import { runClaudeCode } from "@/lib/integrations.functions";
 import { toast } from "sonner";
 import {
   Github, Send, Sparkles, Copy, ExternalLink, ArrowLeft, X, Settings,
-  Trash2, AlertTriangle, Plus, FileCode,
+  Trash2, AlertTriangle, Plus, FileCode, Check, Loader2, Circle, AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { GithubTab } from "@/components/tabs/GithubTab";
@@ -345,17 +345,55 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
 }
 
 /* ============ CODE TAB ============ */
+type Job = {
+  id: string;
+  status: string;
+  branch_name: string | null;
+  last_message: string | null;
+  error: string | null;
+  pr_url: string | null;
+  pr_number: number | null;
+  proposal_id: string | null;
+};
+
+const STEPS: { key: string; label: string; matches: string[] }[] = [
+  { key: "clone",  label: "Cloning repo",       matches: ["cloning"] },
+  { key: "code",   label: "Reading & coding",   matches: ["coding"] },
+  { key: "commit", label: "Committing changes", matches: ["committing"] },
+  { key: "pr",     label: "Opening PR",         matches: ["pr_opened"] },
+];
+
+function stepState(jobStatus: string, idx: number): "done" | "active" | "idle" | "error" {
+  if (jobStatus === "failed") {
+    // mark the last in-progress step as error; everything after idle
+    return idx === 0 ? "error" : "idle";
+  }
+  const order = ["queued", "cloning", "coding", "committing", "pr_opened"];
+  const cur = order.indexOf(jobStatus);
+  if (cur < 0) return "idle";
+  // step idx done when current > idx+1
+  if (cur > idx + 1) return "done";
+  if (cur === idx + 1) return "active";
+  if (jobStatus === "pr_opened") return "done";
+  return "idle";
+}
+
 function CodeTab({ ws, workspaceId, user }: any) {
   const [prompts, setPrompts] = useState<any[]>([]);
   const [selected, setSelected] = useState<any>(null);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [sending, setSending] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [confirmRun, setConfirmRun] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
-  const ghIssue = useServerFn(createGithubIssue);
+  const [copied, setCopied] = useState(false);
+  const [jobs, setJobs] = useState<Record<string, Job>>({}); // by proposal_id
+  const [activeWsJob, setActiveWsJob] = useState<Job | null>(null);
+  const runFn = useServerFn(runClaudeCode);
 
   const hasRepo = !!ws.github_repo;
 
+  // Load prompts + realtime
   useEffect(() => {
     (async () => {
       const { data } = await supabase.from("prompts")
@@ -374,10 +412,56 @@ function CodeTab({ ws, workspaceId, user }: any) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
 
+  // Load jobs + realtime
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("claude_code_jobs")
+        .select("*").eq("workspace_id", workspaceId)
+        .order("created_at", { ascending: false }).limit(50);
+      const map: Record<string, Job> = {};
+      for (const j of (data ?? []) as Job[]) {
+        if (j.proposal_id && !map[j.proposal_id]) map[j.proposal_id] = j;
+      }
+      setJobs(map);
+      const act = (data ?? []).find((j: any) =>
+        ["queued", "cloning", "coding", "committing"].includes(j.status)
+      );
+      setActiveWsJob((act as Job) ?? null);
+    })();
+    const ch = supabase.channel(`jobs-${workspaceId}`)
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "claude_code_jobs", filter: `workspace_id=eq.${workspaceId}` },
+        (payload) => {
+          const row = (payload.new ?? payload.old) as Job;
+          if (!row) return;
+          setJobs((prev) => {
+            const next = { ...prev };
+            if (row.proposal_id) {
+              const existing = next[row.proposal_id];
+              if (!existing || new Date((payload.new as any)?.updated_at ?? 0) >= new Date((existing as any).updated_at ?? 0)) {
+                next[row.proposal_id] = row;
+              }
+            }
+            return next;
+          });
+          if (["queued", "cloning", "coding", "committing"].includes(row.status)) {
+            setActiveWsJob(row);
+          } else {
+            setActiveWsJob((cur) => (cur && cur.id === row.id ? null : cur));
+          }
+        })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [workspaceId]);
+
   useEffect(() => {
     if (selected) { setTitle(selected.title); setContent(selected.content); }
     else { setTitle(""); setContent(""); }
-  }, [selected]);
+  }, [selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const job = selected ? jobs[selected.id] : null;
+  const isJobRunning = !!job && ["queued", "cloning", "coding", "committing"].includes(job.status);
+  const blockedByOther = !!activeWsJob && (!job || activeWsJob.id !== job.id);
 
   const newBlank = async () => {
     const { data, error } = await supabase.from("prompts").insert({
@@ -393,21 +477,24 @@ function CodeTab({ ws, workspaceId, user }: any) {
     await supabase.from("prompts").update({ title, content }).eq("id", selected.id);
   };
 
-  const sendIssue = async () => {
-    if (!selected) return;
-    if (!hasRepo) return toast.error("Connect a GitHub repo first");
-    setSending(true);
+  const runJob = async () => {
+    if (!selected || !hasRepo) return;
+    setConfirmRun(false);
+    setRunning(true);
     try {
       await supabase.from("prompts").update({ title, content }).eq("id", selected.id);
-      const r = await ghIssue({ data: { workspaceId, promptId: selected.id } });
-      toast.success(`Issue #${r.issue_number} created`);
-      const { data } = await supabase.from("prompts").select("*").eq("id", selected.id).single();
-      setSelected(data);
+      await runFn({ data: { workspaceId, promptId: selected.id } });
     } catch (e: any) {
-      toast.error(e?.message ?? "Failed");
+      toast.error(e?.message ?? "Failed to start");
     } finally {
-      setSending(false);
+      setRunning(false);
     }
+  };
+
+  const copyPrompt = () => {
+    navigator.clipboard.writeText(content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const deletePrompt = async () => {
@@ -419,16 +506,26 @@ function CodeTab({ ws, workspaceId, user }: any) {
   };
 
   const statusStyle = (s: string) => {
-    if (s === "pushed" || s === "sent") return "bg-success/15 text-success";
-    if (s === "ready") return "bg-amber-500/15 text-amber-500";
+    const j = (s || "").toLowerCase();
+    if (j === "pushed" || j === "pr_opened") return "bg-violet-500/15 text-violet-400";
+    if (["cloning", "coding", "committing", "queued"].includes(j)) return "bg-blue-500/15 text-blue-400 animate-pulse";
+    if (j === "failed") return "bg-error/15 text-error";
+    if (j === "ready") return "bg-amber-500/15 text-amber-500";
     return "bg-muted text-muted-foreground";
   };
-  const statusLabel = (s: string) => (s === "sent" ? "pushed" : s);
+
+  // Combine prompt status with live job status for display
+  const displayStatus = (p: any) => {
+    const j = jobs[p.id];
+    if (j && ["queued", "cloning", "coding", "committing", "failed"].includes(j.status)) return j.status;
+    if (j && j.status === "pr_opened") return "pr_opened";
+    return p.status;
+  };
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* Top bar */}
-      <div className="border-b border-border px-4 md:px-6 py-3 flex items-center justify-between gap-3">
+      <div className="border-b border-border px-4 md:px-6 py-3 flex items-center justify-between gap-3 flex-wrap">
         {hasRepo ? (
           <div className="flex items-center gap-2 text-sm">
             <Github className="h-4 w-4 text-muted-foreground" />
@@ -437,10 +534,10 @@ function CodeTab({ ws, workspaceId, user }: any) {
               className="font-mono text-foreground hover:underline">{ws.github_repo}</a>
           </div>
         ) : (
-          <div className="flex items-center gap-2 text-sm text-amber-500">
+          <Link to="/settings" className="flex items-center gap-2 text-sm text-amber-500 hover:underline">
             <AlertTriangle className="h-4 w-4" />
-            <span>No repo connected — connect one in the GitHub tab to use this feature</span>
-          </div>
+            <span>Connect a GitHub repo in settings to use this feature</span>
+          </Link>
         )}
         <button onClick={newBlank}
           className="inline-flex items-center gap-1.5 bg-brand text-primary-foreground px-3 py-1.5 rounded text-sm hover:opacity-90">
@@ -448,9 +545,9 @@ function CodeTab({ ws, workspaceId, user }: any) {
         </button>
       </div>
 
-      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex flex-col md:flex-row min-h-0">
         {/* List */}
-        <aside className="w-80 border-r border-border overflow-y-auto scrollbar-thin">
+        <aside className="md:w-80 md:border-r border-b md:border-b-0 border-border overflow-y-auto scrollbar-thin max-h-60 md:max-h-none">
           {prompts.length === 0 ? (
             <div className="p-6 text-sm text-muted-foreground text-center">
               <FileCode className="h-8 w-8 mx-auto mb-2 opacity-50" />
@@ -458,23 +555,26 @@ function CodeTab({ ws, workspaceId, user }: any) {
             </div>
           ) : (
             <ul>
-              {prompts.map((p) => (
-                <li key={p.id}>
-                  <button onClick={() => setSelected(p)}
-                    className={cn("w-full text-left p-3 border-b border-border hover:bg-surface", selected?.id === p.id && "bg-surface")}>
-                    <div className="text-sm font-medium truncate">{p.title}</div>
-                    <div className="mt-1 flex items-center gap-2">
-                      <span className={cn("text-[10px] uppercase px-1.5 py-0.5 rounded", statusStyle(p.status))}>
-                        {statusLabel(p.status)}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground">{new Date(p.created_at).toLocaleDateString()}</span>
-                    </div>
-                    <div className="mt-1.5 text-[11px] text-muted-foreground line-clamp-2">
-                      {(p.content || "").slice(0, 80)}
-                    </div>
-                  </button>
-                </li>
-              ))}
+              {prompts.map((p) => {
+                const s = displayStatus(p);
+                return (
+                  <li key={p.id}>
+                    <button onClick={() => setSelected(p)}
+                      className={cn("w-full text-left p-3 border-b border-border hover:bg-surface", selected?.id === p.id && "bg-surface")}>
+                      <div className="text-sm font-medium truncate">{p.title}</div>
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className={cn("text-[10px] uppercase px-1.5 py-0.5 rounded", statusStyle(s))}>
+                          {s}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">{new Date(p.created_at).toLocaleDateString()}</span>
+                      </div>
+                      <div className="mt-1.5 text-[11px] text-muted-foreground line-clamp-2">
+                        {(p.content || "").slice(0, 80)}
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </aside>
@@ -488,65 +588,52 @@ function CodeTab({ ws, workspaceId, user }: any) {
               <div className="flex items-center gap-3 mb-2">
                 <input value={title} onChange={(e) => setTitle(e.target.value)} onBlur={saveEdits}
                   className="flex-1 bg-transparent text-lg font-semibold border-b border-transparent hover:border-border focus:border-brand focus:outline-none pb-2" />
-                <span className={cn("text-[10px] uppercase px-1.5 py-0.5 rounded shrink-0", statusStyle(selected.status))}>
-                  {statusLabel(selected.status)}
+                <span className={cn("text-[10px] uppercase px-1.5 py-0.5 rounded shrink-0", statusStyle(displayStatus(selected)))}>
+                  {displayStatus(selected)}
                 </span>
               </div>
-              {hasRepo && (
-                <div className="text-xs text-muted-foreground mb-3 inline-flex items-center gap-1.5">
-                  <Github className="h-3 w-3" /> Pushing to: <span className="font-mono">{ws.github_repo}</span>
-                </div>
-              )}
               <textarea value={content} onChange={(e) => setContent(e.target.value)} onBlur={saveEdits}
-                rows={18}
+                rows={16}
                 style={{ fontFamily: "'IBM Plex Mono', ui-monospace, monospace" }}
                 className="w-full bg-background border border-border rounded p-3 text-xs focus:outline-none focus:border-brand" />
               <div className="mt-1 text-[10px] text-muted-foreground text-right">{content.length} chars</div>
 
-              <div className="mt-4 flex gap-2 flex-wrap">
-                <button onClick={sendIssue} disabled={sending || !hasRepo}
+              <div className="mt-4 flex gap-2 flex-wrap items-center">
+                <button onClick={() => setConfirmRun(true)}
+                  disabled={running || !hasRepo || isJobRunning || blockedByOther}
                   className="bg-amber-500 text-background px-4 py-2 rounded text-sm font-medium hover:opacity-90 disabled:opacity-50 inline-flex items-center gap-1.5">
-                  <Github className="h-4 w-4" /> {sending ? "Pushing..." : "Push to GitHub as Issue"}
+                  <Sparkles className="h-4 w-4" /> {isJobRunning ? "Claude Code is running..." : running ? "Starting..." : "Run with Claude Code"}
                 </button>
-                <button onClick={() => { navigator.clipboard.writeText(content); toast.success("Copied!"); }}
+                <button onClick={copyPrompt}
                   className="px-4 py-2 border border-border rounded text-sm hover:border-foreground inline-flex items-center gap-1.5">
-                  <Copy className="h-4 w-4" /> Copy Prompt
+                  <Copy className="h-4 w-4" /> {copied ? "Copied!" : "Copy Prompt"}
                 </button>
                 <button onClick={() => setConfirmDel(true)}
                   className="px-4 py-2 text-sm text-muted-foreground hover:text-error inline-flex items-center gap-1.5">
                   <Trash2 className="h-4 w-4" /> Delete
                 </button>
+                {blockedByOther && (
+                  <span className="text-xs text-amber-500">Another job is running in this workspace.</span>
+                )}
               </div>
 
-              {(selected.status === "pushed" || selected.status === "sent") && selected.github_issue_url && (
-                <>
-                  <div className="mt-6 border border-success/30 bg-success/5 rounded p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-sm">
-                        <div className="font-medium">Issue created on {ws.github_repo}</div>
-                        <div className="text-xs text-muted-foreground mt-0.5">Issue #{selected.github_issue_number}</div>
-                      </div>
-                      <a href={selected.github_issue_url} target="_blank" rel="noreferrer"
-                        className="text-xs inline-flex items-center gap-1 bg-brand text-primary-foreground rounded px-3 py-1.5 hover:opacity-90 shrink-0">
-                        View Issue on GitHub <ExternalLink className="h-3 w-3" />
-                      </a>
-                    </div>
-                  </div>
-                  <div className="mt-4 border border-border bg-surface rounded p-4 text-sm">
-                    <div className="font-medium mb-2">Next steps:</div>
-                    <ol className="list-decimal pl-5 space-y-1 text-muted-foreground text-xs">
-                      <li>Open Claude Code in your repo</li>
-                      <li>Run: <code className="font-mono text-foreground">claude</code> (to start Claude Code)</li>
-                      <li>Paste the prompt from the GitHub issue</li>
-                      <li>When done, come back to the GitHub tab to merge the PR</li>
-                    </ol>
-                  </div>
-                </>
-              )}
+              {job && <JobPanel job={job} repo={ws.github_repo} />}
             </>
           )}
         </section>
       </div>
+
+      {confirmRun && (
+        <Modal title="Run with Claude Code?" onClose={() => setConfirmRun(false)}>
+          <p className="text-sm text-muted-foreground mb-4">
+            Claude Code will clone your repo, implement this change, and open a PR on GitHub. Continue?
+          </p>
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => setConfirmRun(false)} className="px-4 py-2 border border-border rounded text-sm hover:border-foreground">Cancel</button>
+            <button onClick={runJob} className="px-4 py-2 bg-amber-500 text-background rounded text-sm font-medium hover:opacity-90">Run</button>
+          </div>
+        </Modal>
+      )}
 
       {confirmDel && (
         <Modal title="Delete this prompt?" onClose={() => setConfirmDel(false)}>
@@ -556,6 +643,73 @@ function CodeTab({ ws, workspaceId, user }: any) {
             <button onClick={deletePrompt} className="px-4 py-2 bg-error text-primary-foreground rounded text-sm hover:opacity-90">Delete</button>
           </div>
         </Modal>
+      )}
+    </div>
+  );
+}
+
+function JobPanel({ job, repo }: { job: Job; repo: string | null }) {
+  const failed = job.status === "failed";
+  const done = job.status === "pr_opened";
+  return (
+    <div className={cn(
+      "mt-6 border rounded p-4",
+      failed ? "border-error/40 bg-error/5" :
+      done ? "border-success/40 bg-success/5" :
+      "border-border bg-surface"
+    )}>
+      <div className="flex items-center gap-2 mb-3">
+        {done ? <Check className="h-4 w-4 text-success" /> :
+          failed ? <AlertCircle className="h-4 w-4 text-error" /> :
+          <Loader2 className="h-4 w-4 text-blue-400 animate-spin" />}
+        <span className="text-sm font-medium">
+          {done ? "PR opened" : failed ? "Job failed" : "Claude Code is working..."}
+        </span>
+        {job.branch_name && (
+          <span className="text-[10px] font-mono text-muted-foreground ml-auto">{job.branch_name}</span>
+        )}
+      </div>
+
+      <ul className="space-y-1.5 mb-3">
+        {STEPS.map((s, i) => {
+          const state = failed ? (i === 0 ? "error" : "idle") : stepState(job.status, i);
+          const Icon = state === "done" ? Check
+            : state === "active" ? Loader2
+            : state === "error" ? AlertCircle
+            : Circle;
+          const color = state === "done" ? "text-success"
+            : state === "active" ? "text-blue-400"
+            : state === "error" ? "text-error"
+            : "text-muted-foreground/50";
+          return (
+            <li key={s.key} className="flex items-center gap-2 text-xs">
+              <Icon className={cn("h-3.5 w-3.5 shrink-0", color, state === "active" && "animate-spin")} />
+              <span className={cn(color)}>{s.label}</span>
+            </li>
+          );
+        })}
+      </ul>
+
+      {job.last_message && !failed && (
+        <div className="text-xs text-muted-foreground border-t border-border pt-2">
+          <span className="text-muted-foreground/70">Last action:</span> <span className="font-mono">{job.last_message}</span>
+        </div>
+      )}
+
+      {failed && (
+        <div className="text-xs text-error border-t border-error/20 pt-2 mt-2 whitespace-pre-wrap font-mono">
+          {job.error || "Unknown error"}
+        </div>
+      )}
+
+      {done && job.pr_url && (
+        <div className="border-t border-success/20 pt-3 mt-2 flex flex-wrap gap-2 items-center">
+          <span className="text-xs text-success flex-1">PR #{job.pr_number} opened on {repo}</span>
+          <a href={job.pr_url} target="_blank" rel="noreferrer"
+            className="text-xs inline-flex items-center gap-1 bg-brand text-primary-foreground rounded px-3 py-1.5 hover:opacity-90">
+            View PR on GitHub <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
       )}
     </div>
   );
