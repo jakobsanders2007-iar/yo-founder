@@ -134,6 +134,16 @@ function SettingsPage() {
       <main className="max-w-3xl mx-auto px-6 py-10 space-y-6">
         <h1 className="text-2xl font-semibold">Settings</h1>
 
+        {/* Backend banner */}
+        <section className="bg-surface border border-border rounded-lg p-4 text-xs text-muted-foreground flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <span className="font-medium text-foreground">Backend:</span>{" "}
+            <code className="font-mono">{import.meta.env.VITE_SUPABASE_PROJECT_ID || "unknown"}</code>
+          </div>
+          <code className="font-mono opacity-70 truncate max-w-full">{import.meta.env.VITE_SUPABASE_URL}</code>
+        </section>
+
+
         {/* GitHub */}
         <section className="bg-surface border border-border rounded-lg p-6">
           <h2 className="text-lg font-semibold mb-4 inline-flex items-center gap-2"><Github className="h-5 w-5" /> GitHub</h2>
