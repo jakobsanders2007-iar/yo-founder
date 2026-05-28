@@ -34,6 +34,96 @@ export const Route = createFileRoute("/workspaces/$id")({
 type Tab = "chat" | "code" | "github" | "vercel" | "supabase" | "domain";
 const TAB_ORDER: Tab[] = ["chat", "code", "github", "vercel", "supabase", "domain"];
 
+const REACTION_EMOJIS = ["👍", "❤️", "🎉", "🚀", "😂", "👀"];
+
+function renderWithMentions(content: string, memberNames: string[]) {
+  if (!memberNames.length) return content;
+  // Match @ followed by word characters
+  const parts: (string | { mention: string })[] = [];
+  const regex = /@([A-Za-z0-9_]+(?:\s[A-Za-z0-9_]+)?)/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(content)) !== null) {
+    const matchName = m[1];
+    const member = memberNames.find((n) => n.toLowerCase() === matchName.toLowerCase());
+    if (member) {
+      if (m.index > last) parts.push(content.slice(last, m.index));
+      parts.push({ mention: member });
+      last = m.index + m[0].length;
+    }
+  }
+  if (last < content.length) parts.push(content.slice(last));
+  if (parts.length === 0) return content;
+  return parts.map((p, i) =>
+    typeof p === "string" ? <span key={i}>{p}</span> :
+      <span key={i} className="bg-brand/15 text-brand px-1 rounded font-medium">@{p.mention}</span>
+  );
+}
+
+function MessageReactionsBar({ messageId, userId, reactions, membersById }: {
+  messageId: string; userId: string; reactions: any[]; membersById: Record<string, any>;
+}) {
+  const [picking, setPicking] = useState(false);
+  // Group reactions by emoji
+  const grouped: Record<string, any[]> = {};
+  for (const r of reactions) (grouped[r.emoji] ||= []).push(r);
+
+  const toggle = async (emoji: string) => {
+    const mine = reactions.find((r) => r.emoji === emoji && r.user_id === userId);
+    if (mine) {
+      await supabase.from("message_reactions").delete().eq("id", mine.id);
+    } else {
+      await supabase.from("message_reactions").insert({ message_id: messageId, emoji, user_id: userId });
+    }
+    setPicking(false);
+  };
+
+  const entries = Object.entries(grouped);
+  if (entries.length === 0 && !picking) {
+    return (
+      <div className="mt-1 opacity-0 group-hover:opacity-100 transition">
+        <button onClick={() => setPicking(true)}
+          className="text-xs text-muted-foreground hover:text-foreground border border-border rounded px-1.5 py-0.5">
+          + 😊
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-1.5 flex items-center gap-1 flex-wrap">
+      {entries.map(([emoji, list]) => {
+        const mine = list.some((r) => r.user_id === userId);
+        const names = list.map((r) => membersById[r.user_id]?.display_name ?? "?").join(", ");
+        return (
+          <button key={emoji} onClick={() => toggle(emoji)} title={names}
+            className={cn(
+              "text-xs px-1.5 py-0.5 rounded border flex items-center gap-1 transition",
+              mine ? "bg-brand/15 border-brand/40 text-foreground" : "bg-background border-border hover:border-foreground"
+            )}>
+            <span>{emoji}</span>
+            <span className="text-[10px] text-muted-foreground">{list.length}</span>
+          </button>
+        );
+      })}
+      {picking ? (
+        <div className="flex items-center gap-0.5 border border-border rounded px-1 bg-surface">
+          {REACTION_EMOJIS.map((e) => (
+            <button key={e} onClick={() => toggle(e)} className="text-sm hover:scale-125 transition px-0.5">{e}</button>
+          ))}
+          <button onClick={() => setPicking(false)} className="text-muted-foreground hover:text-foreground ml-0.5"><X className="h-3 w-3" /></button>
+        </div>
+      ) : (
+        <button onClick={() => setPicking(true)}
+          className="opacity-0 group-hover:opacity-100 transition text-xs text-muted-foreground hover:text-foreground border border-border rounded px-1.5 py-0.5">
+          +
+        </button>
+      )}
+    </div>
+  );
+}
+
+
 function WorkspacePage() {
   const { id: workspaceId } = useParams({ from: "/workspaces/$id" });
   const navigate = useNavigate();
