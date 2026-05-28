@@ -1062,22 +1062,19 @@ export const runClaudeCode = createServerFn({ method: "POST" })
       .from("prompts").select("id, title, content").eq("id", data.promptId).single();
     if (pErr || !prompt) throw new Error("Prompt not found");
 
-    // Load profile + secrets (keys live in profile_secrets, provider on profiles)
-    const [{ data: meProf }, secrets] = await Promise.all([
-      supabase.from("profiles").select("ai_provider").eq("id", userId).single(),
-      getProfileSecrets(userId),
-    ]);
-
-    const provider: "claude" | "gpt" | "gemini" =
-      (meProf?.ai_provider as any) ||
-      (secrets.anthropic_key ? "claude" : secrets.openai_key ? "gpt" : "gemini");
-
-    let aiKey: string | null =
-      provider === "claude" ? secrets.anthropic_key
-      : provider === "gpt" ? secrets.openai_key
-      : secrets.gemini_key;
-    if (!aiKey && provider === "gemini") aiKey = process.env.GEMINI_API_KEY ?? null;
-    if (!aiKey) throw new Error(`Add your ${provider === "claude" ? "Claude" : provider === "gpt" ? "OpenAI" : "Gemini"} API key in Settings to generate code.`);
+    // Use YoFounder's server-side keys — users don't need to bring their own
+    const secrets = await getProfileSecrets(userId).catch(() => ({} as any));
+    let provider: "claude" | "gpt" | "gemini";
+    let aiKey: string | null;
+    if (process.env.ANTHROPIC_API_KEY) {
+      provider = "claude"; aiKey = process.env.ANTHROPIC_API_KEY;
+    } else if (process.env.OPENAI_API_KEY) {
+      provider = "gpt"; aiKey = process.env.OPENAI_API_KEY;
+    } else if (process.env.GEMINI_API_KEY) {
+      provider = "gemini"; aiKey = process.env.GEMINI_API_KEY;
+    } else {
+      throw new Error("No server AI key configured. Add ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY to YoFounder secrets.");
+    }
 
     // GitHub is OPTIONAL — only used when a repo is connected
     let token: string | null = secrets.github_token ?? null;
