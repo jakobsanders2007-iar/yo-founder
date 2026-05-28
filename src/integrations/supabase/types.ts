@@ -246,6 +246,7 @@ export type Database = {
           status: Database["public"]["Enums"]["prompt_status"]
           summary: string | null
           title: string
+          ui_preview_html: string | null
           vercel_preview_url: string | null
           workspace_id: string
         }
@@ -262,6 +263,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["prompt_status"]
           summary?: string | null
           title: string
+          ui_preview_html?: string | null
           vercel_preview_url?: string | null
           workspace_id: string
         }
@@ -278,6 +280,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["prompt_status"]
           summary?: string | null
           title?: string
+          ui_preview_html?: string | null
           vercel_preview_url?: string | null
           workspace_id?: string
         }
