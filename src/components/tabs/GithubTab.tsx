@@ -14,7 +14,7 @@ import {
   mergeGithubPR,
   listGithubRepoFiles,
 } from "@/lib/integrations.functions";
-import { testGithubToken, saveGithubToken } from "@/lib/yofounder.functions";
+import { saveGithubToken } from "@/lib/yofounder.functions";
 import { useAuth } from "@/lib/auth";
 
 type Repo = { full_name: string; private: boolean; updated_at: string; description: string | null };
@@ -28,7 +28,6 @@ export function GithubTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void 
   const [ghToken, setGhToken] = useState("");
   const [showGh, setShowGh] = useState(false);
   const [ghState, setGhState] = useState<{ ok: boolean; msg: string } | null>(null);
-  const testGh = useServerFn(testGithubToken);
   const saveGh = useServerFn(saveGithubToken);
 
   const saveRepo = useServerFn(saveWorkspaceRepo);
@@ -100,17 +99,12 @@ export function GithubTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void 
     if (!ghToken.trim()) return toast.error("Paste a GitHub token first");
     setGhBusy(true); setGhState(null);
     try {
-      const t = await testGh({ data: { token: ghToken.trim() } });
-      if (!t.success) {
-        setGhBusy(false);
-        setGhState({ ok: false, msg: "That token didn't work — check it has `repo` + `read:user` scopes" });
-        return;
-      }
-      await saveGh({ data: { token: ghToken.trim(), login: t.login } });
-      setProfile((p: any) => ({ ...(p ?? {}), github_username: t.login, github_token: ghToken.trim() }));
+      await saveGh({ data: { token: ghToken.trim() } });
+      setProfile((p: any) => ({ ...(p ?? {}), github_token: "saved" }));
       setGhToken("");
       setShowTokenForm(false);
-      toast.success(`GitHub connected as @${t.login}`);
+      setGhState({ ok: true, msg: "Saved and hidden ✓" });
+      toast.success("GitHub key saved");
     } catch (e: any) {
       setGhState({ ok: false, msg: e?.message ?? "Couldn't save — please try again" });
     } finally {
@@ -171,7 +165,7 @@ export function GithubTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void 
                   className="text-xs text-muted-foreground hover:text-foreground">Cancel</button>
                 <button onClick={savePastedToken} disabled={ghBusy || !ghToken.trim()}
                   className="bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50">
-                  {ghBusy ? "Saving..." : "Save token"}
+                  {ghBusy ? "Saving..." : "Store token"}
                 </button>
               </div>
               {ghState?.ok && <div className="mt-2 text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {ghState.msg}</div>}
