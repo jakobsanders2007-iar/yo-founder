@@ -172,6 +172,7 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
     if (!content || content.length > 1000 || sending) return;
     setSending(true);
     setText("");
+    setErrorBanner(null);
     const me = membersById[user.id];
     try {
       const { error } = await supabase.from("messages").insert({
@@ -184,9 +185,12 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
         payload: { name: me?.display_name, provider: me?.ai_provider, color: me?.avatar_color },
       });
 
-      respondSender({ data: { workspaceId } }).catch((e) => console.error(e));
+      respondSender({ data: { workspaceId } })
+        .then((r: any) => { if (r && r.ok === false) setErrorBanner("Something went wrong — try sending your message again"); })
+        .catch(() => setErrorBanner("Something went wrong — try sending your message again"));
+      respondCofounder({ data: { workspaceId } }).catch(() => {});
     } catch (e: any) {
-      toast.error(e?.message ?? "Send failed");
+      setErrorBanner("Something went wrong — try sending your message again");
     } finally {
       setSending(false);
     }
