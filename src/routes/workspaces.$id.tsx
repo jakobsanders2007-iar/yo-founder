@@ -294,7 +294,7 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
         {typing && (
           <div className="flex gap-3 items-center text-xs text-muted-foreground">
             <Avatar name={typing.name} color={typing.color} size="sm" />
-            <span>{typing.name}'s {typing.provider === "claude" ? "Claude" : "GPT"} is thinking</span>
+            <span>{typing.name}'s {typing.provider === "claude" ? "Claude" : typing.provider === "gemini" ? "Gemini" : "ChatGPT"} is thinking</span>
             <span className="flex gap-1">
               <span className="typing-dot h-1.5 w-1.5 rounded-full" style={{ background: typing.color }} />
               <span className="typing-dot h-1.5 w-1.5 rounded-full" style={{ background: typing.color }} />
