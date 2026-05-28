@@ -6,7 +6,16 @@ const CHAT_TOKENS = 200;
 const PROMPT_TOKENS = 600;
 const TIMEOUT_MS = 25_000;
 
-const SYSTEM_PROMPT = `You are a helpful co-founder assistant inside YoFounder. You are helping a founder build their business. Be warm, encouraging, and speak in plain English. No technical jargon unless asked. Keep responses short and actionable. Maximum 3 sentences.`;
+function buildSystemPrompt(memberName: string) {
+  return `You are ${memberName}'s AI in a co-founder group chat on YoFounder. Other founders and their AIs are in this conversation too.
+Be conversational, direct, and genuinely helpful.
+Talk like a smart co-founder, not a corporate assistant.
+Keep responses under 4 sentences unless asked for more.
+Never use headers or bullet points unless specifically asked.
+Never say 'As an AI' or 'I'm here to help'.
+Just talk naturally.`;
+}
+const SYSTEM_PROMPT = buildSystemPrompt("the founder");
 
 async function withTimeout(fn: (signal: AbortSignal) => Promise<Response>): Promise<Response> {
   const ctrl = new AbortController();
