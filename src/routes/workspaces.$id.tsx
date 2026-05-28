@@ -542,19 +542,19 @@ function CodeTab({ ws, workspaceId, user }: any) {
         {hasRepo ? (
           <div className="flex items-center gap-2 text-sm">
             <Github className="h-4 w-4 text-muted-foreground" />
-            <span className="text-muted-foreground">Pushing to:</span>
+            <span className="text-muted-foreground">Saving changes to:</span>
             <a href={`https://github.com/${ws.github_repo}`} target="_blank" rel="noreferrer"
               className="font-mono text-foreground hover:underline">{ws.github_repo}</a>
           </div>
         ) : (
           <Link to="/settings" className="flex items-center gap-2 text-sm text-amber-500 hover:underline">
             <AlertTriangle className="h-4 w-4" />
-            <span>Connect a GitHub repo in settings to use this feature</span>
+            <span>Connect your code in settings to start using this</span>
           </Link>
         )}
         <button onClick={newBlank}
           className="inline-flex items-center gap-1.5 bg-brand text-primary-foreground px-3 py-1.5 rounded text-sm hover:opacity-90">
-          <Plus className="h-3.5 w-3.5" /> New Prompt
+          <Plus className="h-3.5 w-3.5" /> New change
         </button>
       </div>
 
