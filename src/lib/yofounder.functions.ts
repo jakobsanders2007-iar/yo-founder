@@ -130,60 +130,6 @@ function providerLabel(p: Provider | string | null | undefined) {
 }
 
 // ---------- Test AI key ----------
-export const testAiKey = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((input) =>
-    z.object({
-      provider: z.enum(["claude", "gpt", "gemini"]),
-      apiKey: z.string().max(500).optional().default(""),
-    }).parse(input)
-  )
-  .handler(async ({ data }) => {
-    try {
-      if (data.provider === "gemini") {
-        const serverKey = process.env.GEMINI_API_KEY;
-        if (!serverKey) return { success: false as const, error: "Gemini is not enabled on the server yet" };
-        await callProvider("gemini", serverKey, "You are a test.", [{ role: "user", content: "Say OK" }], 10);
-        return { success: true as const };
-      }
-      if (!data.apiKey || data.apiKey.length < 10) {
-        return { success: false as const, error: "Please add a valid key" };
-      }
-      await callProvider(data.provider, data.apiKey, "You are a test.", [{ role: "user", content: "Say OK" }], 10);
-      return { success: true as const };
-    } catch (e: any) {
-      return { success: false as const, error: e?.message ?? "Unknown error" };
-    }
-  });
-
-// ---------- Test GitHub token ----------
-export const testGithubToken = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((input) =>
-    z.object({ token: z.string().min(10).max(500) }).parse(input)
-  )
-  .handler(async ({ data }) => {
-    try {
-      const res = await withTimeout((signal) =>
-        fetch("https://api.github.com/user", {
-          signal,
-          headers: {
-            Authorization: `Bearer ${data.token}`,
-            Accept: "application/vnd.github+json",
-            "User-Agent": "YoFounder",
-          },
-        })
-      );
-      if (!res.ok) {
-        return { success: false as const, error: `GitHub returned ${res.status}` };
-      }
-      const json = await res.json();
-      return { success: true as const, login: json.login as string, name: (json.name as string) ?? null };
-    } catch (e: any) {
-      return { success: false as const, error: e?.message ?? "Unknown error" };
-    }
-  });
-
 // ---------- AI respond (sender) ----------
 async function fetchHistory(supabase: any, workspaceId: string) {
   const { data } = await supabase
