@@ -248,12 +248,15 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
             <button onClick={() => setErrorBanner(null)} className="text-error/70 hover:text-error"><X className="h-4 w-4" /></button>
           </div>
         )}
+        {messages.map((m) => {
+          const sender = membersById[m.sender_user_id];
           const color = sender?.avatar_color ?? "#666";
           const name = sender?.display_name ?? "?";
           const isAi = m.sender_type === "ai";
           const isMine = !isAi && m.sender_user_id === user.id;
-          const borderColor = m.ai_provider === "claude" ? "#6366f1" : m.ai_provider === "gpt" ? "#10b981" : "transparent";
-          const label = isAi ? `${name}'s ${m.ai_provider === "claude" ? "Claude" : "GPT"}` : name;
+          const borderColor = m.ai_provider === "claude" ? "#6366f1" : m.ai_provider === "gpt" ? "#10b981" : m.ai_provider === "gemini" ? "#4285F4" : "transparent";
+          const providerName = m.ai_provider === "claude" ? "Claude" : m.ai_provider === "gpt" ? "ChatGPT" : m.ai_provider === "gemini" ? "Gemini" : "AI";
+          const label = isAi ? `${name}'s ${providerName}` : name;
           return (
             <div key={m.id} className="flex gap-3 group">
               <Avatar name={name} color={color} size="sm" />
