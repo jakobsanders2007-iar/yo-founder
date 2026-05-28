@@ -191,10 +191,12 @@ function buildHistoryForProvider(history: any[], myUserId: string): ChatMsg[] {
 function keyForProvider(profile: any): { provider: Provider; key: string } | null {
   const p = profile?.ai_provider as Provider | null;
   if (!p) return null;
-  const k =
-    p === "claude" ? profile.anthropic_key :
-    p === "gpt" ? profile.openai_key :
-    profile.gemini_key;
+  if (p === "gemini") {
+    const k = process.env.GEMINI_API_KEY;
+    if (!k) return null;
+    return { provider: "gemini", key: k };
+  }
+  const k = p === "claude" ? profile.anthropic_key : profile.openai_key;
   if (!k) return null;
   return { provider: p, key: k };
 }
