@@ -1,6 +1,36 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
+
+// ---- secrets helpers (server-only; bypass RLS via admin client after authz) ----
+async function assertWorkspaceAccess(supabase: any, workspaceId: string) {
+  const { data, error } = await supabase
+    .from("workspaces").select("id").eq("id", workspaceId).single();
+  if (error || !data) throw new Error("Workspace not found or not accessible");
+}
+async function getWorkspaceSecrets(supabase: any, workspaceId: string) {
+  await assertWorkspaceAccess(supabase, workspaceId);
+  const { data } = await supabaseAdmin
+    .from("workspace_secrets")
+    .select("vercel_token, supabase_service_key, supabase_url")
+    .eq("workspace_id", workspaceId).maybeSingle();
+  return data ?? { vercel_token: null, supabase_service_key: null, supabase_url: null };
+}
+async function upsertWorkspaceSecrets(workspaceId: string, patch: Record<string, any>) {
+  const { error } = await supabaseAdmin
+    .from("workspace_secrets")
+    .upsert({ workspace_id: workspaceId, ...patch, updated_at: new Date().toISOString() }, { onConflict: "workspace_id" });
+  if (error) throw new Error(error.message);
+}
+async function getProfileSecrets(userId: string) {
+  const { data } = await supabaseAdmin
+    .from("profile_secrets")
+    .select("github_token, anthropic_key, openai_key, gemini_key")
+    .eq("user_id", userId).maybeSingle();
+  return data ?? { github_token: null, anthropic_key: null, openai_key: null, gemini_key: null };
+}
+
 
 const TIMEOUT_MS = 15_000;
 
@@ -102,8 +132,8 @@ export const listVercelProjects = createServerFn({ method: "POST" })
     const { supabase } = context as any;
     let token = data.token;
     if (!token && data.workspaceId) {
-      const ws = await getWorkspace(supabase, data.workspaceId);
-      token = ws.vercel_token;
+      const s = await getWorkspaceSecrets(supabase, data.workspaceId);
+      token = s.vercel_token ?? undefined;
     }
     if (!token) throw new Error("No Vercel token");
     const j = await vercelGet(token, "/v9/projects?limit=100");
