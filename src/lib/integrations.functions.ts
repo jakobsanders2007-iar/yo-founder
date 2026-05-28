@@ -1002,7 +1002,7 @@ async function callGeminiRaw(apiKey: string, system: string, userText: string, m
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 120_000);
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
     const res = await fetch(url, {
       method: "POST",
       signal: ctrl.signal,
