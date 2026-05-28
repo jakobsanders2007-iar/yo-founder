@@ -115,7 +115,8 @@ function SettingsPage() {
 
   const disconnectGithub = async () => {
     if (!confirm("Disconnect GitHub? You'll need to reconnect to manage your code.")) return;
-    await supabase.from("profiles").update({ github_token: null, github_username: null }).eq("id", user!.id);
+    await supabase.from("profile_secrets").update({ github_token: null }).eq("user_id", user!.id);
+    await supabase.from("profiles").update({ github_username: null }).eq("id", user!.id);
     setProfile((p: any) => ({ ...p, github_username: null, has_github: false }));
     toast.success("GitHub disconnected");
   };
