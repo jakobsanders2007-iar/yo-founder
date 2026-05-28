@@ -676,7 +676,7 @@ function JobPanel({ job, repo }: { job: Job; repo: string | null }) {
           failed ? <AlertCircle className="h-4 w-4 text-error" /> :
           <Loader2 className="h-4 w-4 text-blue-400 animate-spin" />}
         <span className="text-sm font-medium">
-          {done ? "PR opened" : failed ? "Job failed" : "Claude Code is working..."}
+          {done ? "Change ready for review 🎉" : failed ? "Something went wrong" : "Working on it... 🔧"}
         </span>
         {job.branch_name && (
           <span className="text-[10px] font-mono text-muted-foreground ml-auto">{job.branch_name}</span>
