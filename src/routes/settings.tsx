@@ -74,24 +74,16 @@ function SettingsPage() {
   const handleAiSave = async () => {
     if (provider !== "gemini" && !aiKey.trim()) return toast.error("Please add a key first");
     setAiBusy(true); setAiState(null);
-    if (provider !== "gemini") {
-      const t = await testAi({ data: { provider, apiKey: aiKey.trim() } });
-      if (!t.success) {
-        setAiBusy(false);
-        setAiState({ ok: false, msg: "That key didn't work — please double-check it" });
-        return;
-      }
-    }
+
+    // Save first — don't let a flaky test call block persistence.
     try {
       await saveAi({ data: { provider, apiKey: provider === "gemini" ? "" : aiKey.trim() } });
     } catch (e: any) {
       setAiBusy(false);
-      setAiState({ ok: false, msg: "Couldn't save — please try again" });
+      setAiState({ ok: false, msg: e?.message ?? "Couldn't save — please try again" });
       return;
     }
-    setAiBusy(false);
-    // Keep input value so user can verify what they saved; do NOT clear.
-    setAiState({ ok: true, msg: "Saved ✓" });
+
     setProfile((p: any) => ({
       ...p,
       ai_provider: provider,
@@ -99,6 +91,20 @@ function SettingsPage() {
       has_openai: provider === "gpt" ? true : p?.has_openai,
       has_gemini: provider === "gemini" ? true : p?.has_gemini,
     }));
+
+    // Then verify it works — show a warning if not, but the key is already saved.
+    if (provider !== "gemini") {
+      const t = await testAi({ data: { provider, apiKey: aiKey.trim() } }).catch(() => ({ success: false as const, error: "Couldn't reach provider" }));
+      if (!t.success) {
+        setAiBusy(false);
+        setAiState({ ok: true, msg: "Saved ✓ — but the test call failed. Double-check the key works." });
+        toast.success("Key saved (test failed — verify it)");
+        return;
+      }
+    }
+
+    setAiBusy(false);
+    setAiState({ ok: true, msg: "Saved ✓" });
     toast.success("AI saved ✓");
   };
 
