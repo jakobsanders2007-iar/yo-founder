@@ -1,101 +1,50 @@
-# Code Tab Premium Rebuild
+# YoFounder Core Rebuild
 
-Rebuild the Code tab inside `src/routes/workspaces.$id.tsx` into a full-screen execution layer with 4 sub-tabs, a top status bar, sticky prompt input, and approval flow. Vercel preview URL is the live preview — no local dev server.
+This is a large 5-part rebuild. Before I start, I need to confirm scope and a few specifics so I don't waste a round-trip.
 
-## 1. Database additions
+## Part 1 — Invite System
+- Add "Invite" button to workspace top bar + settings
+- Email via Resend: subject `[Name] invited you to [Workspace] on YoFounder`, CTA to `yo-founder.com/invite/[token]`
+- `/invite/[token]` page already exists — extend it to redirect to login first, then back
+- Member list in top bar: avatars, online ring (last_seen_at < 5min), tooltip with provider, click → profile card
 
-Migration adds 4 columns to `prompts`:
-- `summary text` — plain English what changed
-- `files_affected text[]` — list of file paths
-- `next_steps text[]` — 1-3 suggested next steps
-- `vercel_preview_url text` — iframe src
+**DB changes needed:**
+- `workspace_invites` already has token/workspace_id/email/invited_by/accepted/created_at ✓
+- Need Resend integration: requires `RESEND_API_KEY` secret
 
-No new tables. RLS already covers the row; new columns inherit.
+## Part 2 — AI Chat Settings
+- Add `ai_chat_settings jsonb` column to `workspaces` table with default:
+  `{"who_responds":"everyone","response_style":"simultaneous","response_trigger":"every_message","active_members":[]}`
+- New "AI Settings" section in workspace settings (owner only)
+- 4 radio groups + per-member checkbox list
 
-## 2. Server function additions (`src/lib/integrations.functions.ts`)
+## Part 3 — Group Chat Rebuild
+- **Delete** "AI teammates" concept (Strategist/Engineer/Designer/Growth)
+- Real group chat: humans + each person's AI on their behalf
+- Update system prompt in `yofounder.functions.ts` to the new conversational one
+- Server function changes: `respondAsSenderAi` / `respondAsCofounderAi` replaced with `respondToMessage` that reads `ai_chat_settings` and triggers the right AIs
+- UI: right-align own human messages, left-align others; AI messages indented under owner; provider-colored left border (indigo/emerald/blue); message grouping; emoji reactions (👍✅🔥💡); delete own; @mentions dropdown with `@name @claude @gpt @gemini @all`
+- "Generate Build Prompt" demoted to small top-right button
 
-All GitHub/Vercel calls stay server-side, reading tokens from `profiles` / `workspaces`. New server functions:
+**DB changes needed:**
+- New `message_reactions` table (message_id, user_id, emoji)
+- `messages` already covers content/sender — no change needed
 
-- `getRepoTree({ workspaceId })` — `GET /repos/{owner}/{repo}/git/trees/{branch}?recursive=1`. Returns `[{ path, type, sha }]` for the Files tab.
-- `getRepoFile({ workspaceId, path })` — `GET /repos/{owner}/{repo}/contents/{path}`. Returns `{ path, content, size, lines }`.
-- `getPrDiff({ workspaceId, prNumber })` — `GET /repos/{owner}/{repo}/pulls/{n}/files`. Returns `[{ filename, status, additions, deletions, patch }]` for the Diff tab.
-- `mergePr({ workspaceId, promptId, prNumber })` — `PUT /repos/{owner}/{repo}/pulls/{n}/merge`. On success updates `prompts.status='deployed'` and fires `fetchVercelPreview`.
-- `closePr({ workspaceId, promptId, prNumber })` — `PATCH .../pulls/{n}` with `state: closed`, resets prompt status to `draft`.
-- `fetchVercelPreview({ workspaceId, promptId })` — `GET https://api.vercel.com/v6/deployments?projectId=...&limit=1` using `vercel_token` from workspace; saves `vercel_preview_url` on the prompt row.
+## Part 4 — Code Tab Simplified
+- Strip Files/Diff/Logs from Code tab
+- Keep: prompt input, job status panel (4 steps), prompt history, approval card, preview card with Vercel iframe
 
-Extend `generateClaudeCodePrompt` (in `yofounder.functions.ts`) to instruct the model to also return `summary`, `files_affected`, `next_steps` and persist them on the row.
+## Part 5 — GitHub Tab Expanded
+- Add sub-tabs: PRs | Commits | Files | Diff | Logs
+- Files: full repo tree via GitHub API (edge call), syntax-highlighted read-only viewer
+- Diff: most recent PR/job diff
+- Logs: plain-English job logs with "Fix with AI" button → routes to Code tab with prefilled prompt
 
-## 3. UI rebuild (in same `workspaces.$id.tsx`)
+## Questions before I build
 
-Replace `CodeTab` body. New layout:
+1. **Resend** — `RESEND_API_KEY` is not in your secrets list. Should I request it now, or skip email and just generate the invite link to copy?
+2. **AI teammates removal** — confirm: the `ai_teammates`/Strategist/Engineer concept currently in `workspaces.$id.tsx` should be fully removed (not preserved as a toggle)?
+3. **Member-list realtime** — for "online if active in 5 min", OK to update `profiles.last_seen_at` every 60s while the workspace tab is open?
+4. **Scope** — this is ~6-8 hours of work compressed into one turn. OK if I deliver in this order and check in if I'm running long: (1) DB migration, (2) invite + email, (3) AI settings UI + storage, (4) chat rebuild, (5) Code/GitHub reorg?
 
-```text
-┌──────────────────────────────────────────────────────┐
-│ repo · branch · [status badge]      [Push to GitHub] │  top bar
-├──────────────────────────────────────────────────────┤
-│ Preview | Diff | Files | Logs                        │  sub-tabs
-├──────────────────────────────────────────────────────┤
-│                                                      │
-│              active sub-tab content                  │
-│                                                      │
-│ ─────────────── change summary card (if job done) ── │
-│ ─────────────── approval card (if pr_opened) ─────── │
-├──────────────────────────────────────────────────────┤
-│ [textarea] [context chips]              [Run]        │  sticky bottom
-└──────────────────────────────────────────────────────┘
-```
-
-Sub-components (all inline in same file to keep diff focused — extract later if file >1100 lines):
-
-- `<CodeTopBar />` — repo, branch, `<BuildStatusBadge />`, "Push to GitHub" (enabled when `selected.status === 'pr_opened'`).
-- `<BuildStatusBadge status />` — 8 states with icon + label + amber pulse on active.
-- `<SubTabBar />` — Preview/Diff/Files/Logs with amber underline on active, scrollable on mobile.
-- `<PreviewPane url />` — empty state (grid bg, logo, amber CTA) → focuses prompt input; otherwise iframe with refresh / open / copy bar; skeleton on load; fallback message after 5s.
-- `<DiffPane prompt />` — fetches `getPrDiff` when `pr_number` exists. Left list 30%, right unified diff 70%, IBM Plex Mono, +/- coloring. Empty state when no PR.
-- `<FilesPane workspaceId />` — fetches `getRepoTree`, lazy-renders folders; selected file fetched via `getRepoFile`. "Add to prompt context" pushes path into `contextFiles` state.
-- `<LogsPane job />` — derives log lines from job status/error history with timestamps; "Fix with AI" button on red lines pre-fills + focuses prompt.
-- `<ChangeSummaryCard prompt />` — amber left border, files_affected list, summary, next_steps.
-- `<ApprovalCard prompt />` — three buttons: Approve&Push (calls `mergePr`, confetti via `canvas-confetti`), Request Changes (pre-fills prompt), Reject (confirm → `closePr`).
-- `<PromptDock />` — sticky textarea + chips + Run + char count + Cmd+Enter; disabled with "working..." while running.
-- `<EmptyState />` — full-screen when `prompts.length === 0`.
-
-Existing functionality preserved: prompt list still backs the view (rename "New change" stays); existing `runClaudeCode` server fn still triggers the job; realtime subscriptions for `prompts` and `claude_code_jobs` unchanged.
-
-## 4. Status mapping
-
-8 visual states derive from `job.status` + `prompt.status`:
-- no job → Waiting
-- `queued|reading` → Thinking
-- `coding` → Building
-- `committing` → Saving
-- `pr_opened` → Reviewing
-- `merging` (transient) → Approved
-- `deployed` → Live
-- `failed` → Error
-
-## 5. Confetti + deps
-
-Add `canvas-confetti` (~5kb) for the approve animation. No other new deps — diffs rendered with custom component (no react-diff-viewer needed for unified view).
-
-## 6. Mobile
-
-- Sub-tabs become horizontally scrollable strip with `overflow-x-auto`
-- Diff/Files panes stack vertically (`flex-col md:flex-row`)
-- Prompt dock stays sticky at bottom
-
-## 7. What stays untouched
-
-- `__root.tsx`, login, settings, onboarding, other tabs (Chat / GitHub / Vercel / Supabase / Domain)
-- `runClaudeCode` server fn signature
-- All other existing server functions
-- Plain-English copy rules continue to apply throughout (no "repo/PR/merge/branch" in user-facing strings — internal labels say "version" / "change request" / "approve")
-
-## Order of execution
-
-1. Migration (prompts columns) — wait for approval
-2. Server fns in `integrations.functions.ts` + small extension to `yofounder.functions.ts`
-3. Install `canvas-confetti`
-4. Rewrite `CodeTab` + sub-components in `workspaces.$id.tsx`
-5. Smoke-test build, fix typecheck errors
-
-After approval I'll start with the migration.
+Once you answer (especially #1 and #2), I'll start with the migration.
