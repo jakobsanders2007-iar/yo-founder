@@ -79,20 +79,19 @@ async function callOpenAI(apiKey: string, systemPrompt: string, history: ChatMsg
 }
 
 async function callGemini(apiKey: string, systemPrompt: string, history: ChatMsg[], maxTokens: number) {
-  // Use v1beta gemini-1.5-flash (gemini-pro is deprecated for new keys)
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const contents = history.map((m) => ({
-    role: m.role === "assistant" ? "model" : "user",
-    parts: [{ text: m.content }],
-  }));
+  // Inline the system prompt into the conversation for broadest compatibility
+  const fullConversation = [
+    `System: ${systemPrompt}`,
+    ...history.map((m) => `${m.role === "assistant" ? "Assistant" : "User"}: ${m.content}`),
+  ].join("\n\n");
   const res = await withTimeout((signal) =>
     fetch(url, {
       method: "POST",
       signal,
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents,
+        contents: [{ parts: [{ text: fullConversation }] }],
         generationConfig: { maxOutputTokens: maxTokens },
       }),
     })
