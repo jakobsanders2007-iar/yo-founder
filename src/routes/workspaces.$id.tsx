@@ -999,6 +999,7 @@ function CodeTopBar({ ws, status, canApprove, onApprove }: any) {
 function SubTabBar({ value, onChange }: { value: SubTab; onChange: (v: SubTab) => void }) {
   const items: { key: SubTab; label: string; icon: any }[] = [
     { key: "preview", label: "Preview", icon: Eye },
+    { key: "uipreview", label: "UI Mockup", icon: Sparkles },
     { key: "diff", label: "Diff", icon: FileDiff },
     { key: "files", label: "Files", icon: FilesIcon },
     { key: "logs", label: "Logs", icon: Terminal },
