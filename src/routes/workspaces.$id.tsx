@@ -7,12 +7,12 @@ import { Logo } from "@/components/Logo";
 import { Avatar } from "@/components/UserAvatar";
 import {
   respondAsSenderAi, generatePrompt,
-  createGithubIssue,
 } from "@/lib/yofounder.functions";
+import { runClaudeCode } from "@/lib/integrations.functions";
 import { toast } from "sonner";
 import {
   Github, Send, Sparkles, Copy, ExternalLink, ArrowLeft, X, Settings,
-  Trash2, AlertTriangle, Plus, FileCode,
+  Trash2, AlertTriangle, Plus, FileCode, Check, Loader2, Circle, AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { GithubTab } from "@/components/tabs/GithubTab";
