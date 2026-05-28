@@ -608,40 +608,7 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
       </div>
 
 
-      {showGenModal && genResult && (
-        <Modal onClose={() => setShowGenModal(false)} title="Generated Claude Code Prompt">
-          <input
-            value={genResult.title}
-            onChange={(e) => setGenResult({ ...genResult, title: e.target.value })}
-            className="w-full bg-background border border-border rounded px-3 py-2 text-sm font-semibold mb-3"
-          />
-          <textarea
-            value={genResult.content}
-            onChange={(e) => setGenResult({ ...genResult, content: e.target.value })}
-            rows={16}
-            className="w-full bg-background border border-border rounded px-3 py-2 text-xs font-mono mb-4"
-          />
-          <div className="flex gap-2 justify-end">
-            <button onClick={() => setShowGenModal(false)} className="px-4 py-2 border border-border rounded text-sm hover:border-foreground">Cancel</button>
-            <button onClick={saveGenerated} disabled={saving} className="px-4 py-2 bg-brand text-primary-foreground rounded text-sm hover:opacity-90 disabled:opacity-50">
-              {saving ? "Saving..." : "Save to Code Tab"}
-            </button>
-          </div>
-        </Modal>
-      )}
-
       {confirmDelete && (
-        <Modal title="Delete this message?" onClose={() => setConfirmDelete(null)}>
-          <p className="text-sm text-muted-foreground mb-4">This action cannot be undone.</p>
-          <div className="flex gap-2 justify-end">
-            <button onClick={() => setConfirmDelete(null)} className="px-4 py-2 border border-border rounded text-sm hover:border-foreground">Cancel</button>
-            <button onClick={() => doDelete(confirmDelete)} className="px-4 py-2 bg-error text-primary-foreground rounded text-sm hover:opacity-90">Delete</button>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-}
         <Modal title="Delete this message?" onClose={() => setConfirmDelete(null)}>
           <p className="text-sm text-muted-foreground mb-4">This action cannot be undone.</p>
           <div className="flex gap-2 justify-end">
