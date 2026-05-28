@@ -420,7 +420,14 @@ export type Database = {
     Enums: {
       ai_provider: "claude" | "gpt" | "gemini"
       member_role: "owner" | "cofounder"
-      prompt_status: "draft" | "sent" | "ready" | "pushed" | "reading"
+      prompt_status:
+        | "draft"
+        | "sent"
+        | "ready"
+        | "pushed"
+        | "reading"
+        | "pr_opened"
+        | "deployed"
       sender_type: "human" | "ai"
     }
     CompositeTypes: {
@@ -551,7 +558,15 @@ export const Constants = {
     Enums: {
       ai_provider: ["claude", "gpt", "gemini"],
       member_role: ["owner", "cofounder"],
-      prompt_status: ["draft", "sent", "ready", "pushed", "reading"],
+      prompt_status: [
+        "draft",
+        "sent",
+        "ready",
+        "pushed",
+        "reading",
+        "pr_opened",
+        "deployed",
+      ],
       sender_type: ["human", "ai"],
     },
   },
