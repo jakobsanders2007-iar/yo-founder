@@ -687,13 +687,13 @@ export const saveWorkspaceRepo = createServerFn({ method: "POST" })
    ===================================================== */
 
 async function getUserGithubToken(supabase: any, userId: string, workspaceId: string): Promise<string> {
-  // Try requester first
-  const { data: me } = await supabase.from("profiles").select("github_token").eq("id", userId).single();
-  if (me?.github_token) return me.github_token;
+  // Try requester first (token lives in profile_secrets, not profiles)
+  const mine = await getProfileSecrets(userId);
+  if (mine?.github_token) return mine.github_token;
   // Fallback to workspace owner
   const { data: ws } = await supabase.from("workspaces").select("created_by").eq("id", workspaceId).single();
-  if (ws?.created_by) {
-    const { data: own } = await supabase.from("profiles").select("github_token").eq("id", ws.created_by).single();
+  if (ws?.created_by && ws.created_by !== userId) {
+    const own = await getProfileSecrets(ws.created_by);
     if (own?.github_token) return own.github_token;
   }
   throw new Error("No GitHub token configured. Set one in Settings.");
