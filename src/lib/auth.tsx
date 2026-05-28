@@ -29,8 +29,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       savedRef.current = key;
       try {
         await supabase.from("profiles").upsert(
-          { id: sess.user.id, github_token: providerToken, github_username: userName, onboarded: true },
+          { id: sess.user.id, github_username: userName, onboarded: true },
           { onConflict: "id" }
+        );
+        await supabase.from("profile_secrets").upsert(
+          { user_id: sess.user.id, github_token: providerToken, updated_at: new Date().toISOString() },
+          { onConflict: "user_id" }
         );
       } catch {
         /* non-fatal */
