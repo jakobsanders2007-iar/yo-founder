@@ -81,6 +81,38 @@ export type Database = {
           },
         ]
       }
+      message_reactions: {
+        Row: {
+          created_at: string
+          emoji: string
+          id: string
+          message_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          emoji: string
+          id?: string
+          message_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          emoji?: string
+          id?: string
+          message_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_reactions_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           ai_provider: Database["public"]["Enums"]["ai_provider"] | null
@@ -333,6 +365,7 @@ export type Database = {
       }
       workspaces: {
         Row: {
+          ai_chat_settings: Json
           created_at: string
           created_by: string
           dns_checklist: Json
@@ -354,6 +387,7 @@ export type Database = {
           vercel_token: string | null
         }
         Insert: {
+          ai_chat_settings?: Json
           created_at?: string
           created_by: string
           dns_checklist?: Json
@@ -375,6 +409,7 @@ export type Database = {
           vercel_token?: string | null
         }
         Update: {
+          ai_chat_settings?: Json
           created_at?: string
           created_by?: string
           dns_checklist?: Json
@@ -416,6 +451,7 @@ export type Database = {
         Args: { _other_user_id: string }
         Returns: boolean
       }
+      touch_last_seen: { Args: never; Returns: undefined }
     }
     Enums: {
       ai_provider: "claude" | "gpt" | "gemini"
