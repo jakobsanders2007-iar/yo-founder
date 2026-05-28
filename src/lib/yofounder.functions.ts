@@ -2,9 +2,11 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
-const CHAT_TOKENS = 150;
+const CHAT_TOKENS = 200;
 const PROMPT_TOKENS = 600;
 const TIMEOUT_MS = 25_000;
+
+const SYSTEM_PROMPT = `You are a helpful co-founder assistant inside YoFounder. You are helping a founder build their business. Be warm, encouraging, and speak in plain English. No technical jargon unless asked. Keep responses short and actionable. Maximum 3 sentences.`;
 
 async function withTimeout(fn: (signal: AbortSignal) => Promise<Response>): Promise<Response> {
   const ctrl = new AbortController();
@@ -17,6 +19,7 @@ async function withTimeout(fn: (signal: AbortSignal) => Promise<Response>): Prom
 }
 
 type ChatMsg = { role: "system" | "user" | "assistant"; content: string };
+export type Provider = "claude" | "gpt" | "gemini";
 
 async function callClaude(apiKey: string, systemPrompt: string, history: ChatMsg[], maxTokens: number) {
   const res = await withTimeout((signal) =>
@@ -75,22 +78,60 @@ async function callOpenAI(apiKey: string, systemPrompt: string, history: ChatMsg
   return text as string;
 }
 
+async function callGemini(apiKey: string, systemPrompt: string, history: ChatMsg[], maxTokens: number) {
+  // Use v1beta gemini-1.5-flash (gemini-pro is deprecated for new keys)
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const contents = history.map((m) => ({
+    role: m.role === "assistant" ? "model" : "user",
+    parts: [{ text: m.content }],
+  }));
+  const res = await withTimeout((signal) =>
+    fetch(url, {
+      method: "POST",
+      signal,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents,
+        generationConfig: { maxOutputTokens: maxTokens },
+      }),
+    })
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Gemini API error ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error("Gemini returned no text");
+  return text as string;
+}
+
+async function callProvider(provider: Provider, apiKey: string, systemPrompt: string, history: ChatMsg[], maxTokens: number) {
+  if (provider === "claude") return callClaude(apiKey, systemPrompt, history, maxTokens);
+  if (provider === "gpt") return callOpenAI(apiKey, systemPrompt, history, maxTokens);
+  return callGemini(apiKey, systemPrompt, history, maxTokens);
+}
+
+function providerLabel(p: Provider | string | null | undefined) {
+  if (p === "claude") return "Claude";
+  if (p === "gpt") return "ChatGPT";
+  if (p === "gemini") return "Gemini";
+  return "AI";
+}
+
 // ---------- Test AI key ----------
 export const testAiKey = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) =>
     z.object({
-      provider: z.enum(["claude", "gpt"]),
+      provider: z.enum(["claude", "gpt", "gemini"]),
       apiKey: z.string().min(10).max(500),
     }).parse(input)
   )
   .handler(async ({ data }) => {
     try {
-      if (data.provider === "claude") {
-        await callClaude(data.apiKey, "You are a test.", [{ role: "user", content: "Say OK" }], 5);
-      } else {
-        await callOpenAI(data.apiKey, "You are a test.", [{ role: "user", content: "Say OK" }], 5);
-      }
+      await callProvider(data.provider, data.apiKey, "You are a test.", [{ role: "user", content: "Say OK" }], 10);
       return { success: true as const };
     } catch (e: any) {
       return { success: false as const, error: e?.message ?? "Unknown error" };
@@ -139,16 +180,24 @@ async function fetchHistory(supabase: any, workspaceId: string) {
 function buildHistoryForProvider(history: any[], myUserId: string): ChatMsg[] {
   return history.map((m) => {
     const name = m.profiles?.display_name || "User";
-    const label =
-      m.sender_type === "human"
-        ? `[${name}]`
-        : `[${name}'s ${m.ai_provider === "claude" ? "Claude" : "GPT"}]`;
+    const label = m.sender_type === "human" ? `[${name}]` : `[${name}'s ${providerLabel(m.ai_provider)}]`;
     const isMyAi = m.sender_type === "ai" && m.sender_user_id === myUserId;
     return {
       role: isMyAi ? "assistant" : "user",
       content: `${label}: ${m.content}`,
     } as ChatMsg;
   });
+}
+
+function keyForProvider(profile: any): { provider: Provider; key: string } | null {
+  const p = profile?.ai_provider as Provider | null;
+  if (!p) return null;
+  const k =
+    p === "claude" ? profile.anthropic_key :
+    p === "gpt" ? profile.openai_key :
+    profile.gemini_key;
+  if (!k) return null;
+  return { provider: p, key: k };
 }
 
 async function respondForUser(opts: {
@@ -159,32 +208,29 @@ async function respondForUser(opts: {
   const { supabase, workspaceId, forUserId } = opts;
   const { data: profile, error: pErr } = await supabase
     .from("profiles")
-    .select("display_name, ai_provider, anthropic_key, openai_key")
+    .select("display_name, ai_provider, anthropic_key, openai_key, gemini_key")
     .eq("id", forUserId)
     .single();
   if (pErr || !profile) throw new Error("Profile not found");
-  if (!profile.ai_provider) throw new Error("No AI provider configured");
 
-  const apiKey = profile.ai_provider === "claude" ? profile.anthropic_key : profile.openai_key;
-  if (!apiKey) throw new Error(`No ${profile.ai_provider} API key configured`);
+  const sel = keyForProvider(profile);
+  if (!sel) {
+    return { ok: false, error: "No AI key configured" };
+  }
 
   const history = await fetchHistory(supabase, workspaceId);
   const formatted = buildHistoryForProvider(history, forUserId);
 
-  const system = `You are ${profile.display_name}'s AI assistant. You are in a shared workspace with their co-founder. Help with coding questions, product decisions, technical problems, and anything else they need. Be conversational, concise, and genuinely helpful. Max 3 sentences unless more detail is needed.`;
-
   let text: string;
   try {
-    text = profile.ai_provider === "claude"
-      ? await callClaude(apiKey, system, formatted, CHAT_TOKENS)
-      : await callOpenAI(apiKey, system, formatted, CHAT_TOKENS);
+    text = await callProvider(sel.provider, sel.key, SYSTEM_PROMPT, formatted, CHAT_TOKENS);
   } catch (e: any) {
     await supabase.from("messages").insert({
       workspace_id: workspaceId,
       sender_user_id: forUserId,
       sender_type: "ai",
-      ai_provider: profile.ai_provider,
-      content: `${profile.ai_provider === "claude" ? "Claude" : "GPT"} encountered an error — try again`,
+      ai_provider: sel.provider,
+      content: "Something went wrong — try sending your message again.",
       is_error: true,
     });
     return { ok: false, error: e?.message ?? "Unknown" };
@@ -194,7 +240,7 @@ async function respondForUser(opts: {
     workspace_id: workspaceId,
     sender_user_id: forUserId,
     sender_type: "ai",
-    ai_provider: profile.ai_provider,
+    ai_provider: sel.provider,
     content: text.trim(),
   });
   return { ok: true };
@@ -217,7 +263,6 @@ export const respondAsCofounderAi = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context as any;
-    // Find a co-founder
     const { data: members } = await supabase
       .from("workspace_members")
       .select("user_id")
@@ -236,35 +281,25 @@ export const generatePrompt = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context as any;
-    // Use the requester's anthropic key (fallback: any member with claude key)
     const { data: me } = await supabase
       .from("profiles")
-      .select("anthropic_key, openai_key, ai_provider, display_name")
+      .select("anthropic_key, openai_key, gemini_key, ai_provider, display_name")
       .eq("id", userId)
       .single();
 
-    let apiKey: string | null = me?.anthropic_key ?? null;
-    let useOpenAI = false;
-    if (!apiKey) {
-      // Fallback: any member with anthropic key
-      const { data: members } = await supabase
-        .from("workspace_members")
-        .select("profiles:user_id(anthropic_key, openai_key)")
-        .eq("workspace_id", data.workspaceId);
-      for (const m of members ?? []) {
-        if (m.profiles?.anthropic_key) { apiKey = m.profiles.anthropic_key; break; }
-      }
-      if (!apiKey) {
-        // last resort: use OpenAI
-        if (me?.openai_key) { apiKey = me.openai_key; useOpenAI = true; }
-      }
+    let sel = keyForProvider(me ?? {});
+    if (!sel) {
+      // any provider key on profile
+      if (me?.anthropic_key) sel = { provider: "claude", key: me.anthropic_key };
+      else if (me?.openai_key) sel = { provider: "gpt", key: me.openai_key };
+      else if (me?.gemini_key) sel = { provider: "gemini", key: me.gemini_key };
     }
-    if (!apiKey) throw new Error("No API key available to generate a prompt");
+    if (!sel) throw new Error("No AI key available to generate a prompt");
 
     const history = await fetchHistory(supabase, data.workspaceId);
     const conversation = history.map((m) => {
       const name = m.profiles?.display_name || "User";
-      const label = m.sender_type === "human" ? name : `${name}'s ${m.ai_provider === "claude" ? "Claude" : "GPT"}`;
+      const label = m.sender_type === "human" ? name : `${name}'s ${providerLabel(m.ai_provider)}`;
       return `${label}: ${m.content}`;
     }).join("\n\n");
 
@@ -279,19 +314,13 @@ Format your response as JSON:
 Return ONLY the JSON, no markdown fences, no explanation.`;
 
     const userMsg: ChatMsg = { role: "user", content: `Conversation:\n\n${conversation}` };
+    const raw = await callProvider(sel.provider, sel.key, system, [userMsg], PROMPT_TOKENS);
 
-    const raw = useOpenAI
-      ? await callOpenAI(apiKey, system, [userMsg], PROMPT_TOKENS)
-      : await callClaude(apiKey, system, [userMsg], PROMPT_TOKENS);
-
-    // Strip fences
-    let cleaned = raw.trim();
-    cleaned = cleaned.replace(/^```json\s*/i, "").replace(/^```\s*/, "").replace(/```\s*$/, "").trim();
+    let cleaned = raw.trim().replace(/^```json\s*/i, "").replace(/^```\s*/, "").replace(/```\s*$/, "").trim();
     let parsed: { title: string; content: string };
     try {
       parsed = JSON.parse(cleaned);
     } catch {
-      // Try to extract a JSON object substring
       const m = cleaned.match(/\{[\s\S]*\}/);
       if (!m) throw new Error("Could not parse prompt JSON");
       parsed = JSON.parse(m[0]);
@@ -316,7 +345,6 @@ export const createGithubIssue = createServerFn({ method: "POST" })
       .single();
     if (!ws) throw new Error("Workspace not found");
 
-    // Try requester's token first, then owner's
     const { data: meProf } = await supabase
       .from("profiles").select("github_token").eq("id", userId).single();
     let token: string | null = meProf?.github_token ?? null;
@@ -343,7 +371,7 @@ export const createGithubIssue = createServerFn({ method: "POST" })
         },
         body: JSON.stringify({
           title: `[Claude Code] ${prompt.title}`,
-          body: `## Claude Code Prompt\n\n${prompt.content}\n\n---\n**Instructions:**\n1. Open Claude Code in your terminal pointed at this repo\n2. Paste this prompt into Claude Code\n3. Let Claude Code implement the changes\n4. Claude Code will ask if you want to push — click yes\n5. Come back to the GitHub tab in YoFounder to review and merge the PR\n\n*Generated by YoFounder — repo: ${ws.github_repo}*`,
+          body: `## Claude Code Prompt\n\n${prompt.content}\n\n---\n*Generated by YoFounder*`,
           labels: ["yofounder", "claude-code"],
         }),
       })
@@ -366,7 +394,7 @@ export const saveAiKey = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) =>
     z.object({
-      provider: z.enum(["claude", "gpt"]),
+      provider: z.enum(["claude", "gpt", "gemini"]),
       apiKey: z.string().min(10).max(500),
     }).parse(input)
   )
@@ -374,7 +402,8 @@ export const saveAiKey = createServerFn({ method: "POST" })
     const { supabase, userId } = context as any;
     const payload: any = { id: userId, ai_provider: data.provider };
     if (data.provider === "claude") payload.anthropic_key = data.apiKey;
-    else payload.openai_key = data.apiKey;
+    else if (data.provider === "gpt") payload.openai_key = data.apiKey;
+    else payload.gemini_key = data.apiKey;
     const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "id" });
     if (error) throw new Error(error.message);
     return { ok: true };

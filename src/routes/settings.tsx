@@ -21,7 +21,7 @@ function SettingsPage() {
   const [profile, setProfile] = useState<any>(null);
 
   // AI
-  const [provider, setProvider] = useState<"claude" | "gpt">("claude");
+  const [provider, setProvider] = useState<"claude" | "gpt" | "gemini">("claude");
   const [aiKey, setAiKey] = useState("");
   const [showAi, setShowAi] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
@@ -51,10 +51,9 @@ function SettingsPage() {
     if (!user) { navigate({ to: "/login" }); return; }
     (async () => {
       const { data } = await supabase.from("profiles")
-        .select("display_name, avatar_color, ai_provider, github_username, anthropic_key, openai_key, github_token")
+        .select("display_name, avatar_color, ai_provider, github_username, anthropic_key, openai_key, gemini_key, github_token")
         .eq("id", user.id).single();
       if (data) {
-        // Don't keep the actual key strings in state — just presence flags
         const p = {
           display_name: data.display_name,
           avatar_color: data.avatar_color,
@@ -62,12 +61,13 @@ function SettingsPage() {
           github_username: data.github_username,
           has_anthropic: !!data.anthropic_key,
           has_openai: !!data.openai_key,
+          has_gemini: !!data.gemini_key,
           has_github: !!data.github_token,
         };
         setProfile(p);
         setName(data.display_name ?? "");
         setColor(data.avatar_color ?? COLORS[0]);
-        if (data.ai_provider) setProvider(data.ai_provider);
+        if (data.ai_provider) setProvider(data.ai_provider as any);
       }
       const { data: ws } = await supabase.from("workspaces")
         .select("id, name, github_repo")
@@ -108,6 +108,7 @@ function SettingsPage() {
       ai_provider: provider,
       has_anthropic: provider === "claude" ? true : p?.has_anthropic,
       has_openai: provider === "gpt" ? true : p?.has_openai,
+      has_gemini: provider === "gemini" ? true : p?.has_gemini,
     }));
     toast.success("AI key saved");
   };

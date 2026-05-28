@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth";
 import { Logo } from "@/components/Logo";
 import { Avatar } from "@/components/UserAvatar";
 import {
-  respondAsSenderAi, generatePrompt,
+  respondAsSenderAi, respondAsCofounderAi, generatePrompt,
 } from "@/lib/yofounder.functions";
 import { runClaudeCode } from "@/lib/integrations.functions";
 import { toast } from "sonner";
@@ -126,6 +126,7 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
   const [text, setText] = useState("");
   const [typing, setTyping] = useState<{ name: string; provider: string; color: string } | null>(null);
   const [sending, setSending] = useState(false);
+  const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [showGenModal, setShowGenModal] = useState(false);
   const [genResult, setGenResult] = useState<{ title: string; content: string } | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -134,6 +135,7 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const respondSender = useServerFn(respondAsSenderAi);
+  const respondCofounder = useServerFn(respondAsCofounderAi);
   const genPrompt = useServerFn(generatePrompt);
 
   const membersById = useMemo(() => {
@@ -170,6 +172,7 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
     if (!content || content.length > 1000 || sending) return;
     setSending(true);
     setText("");
+    setErrorBanner(null);
     const me = membersById[user.id];
     try {
       const { error } = await supabase.from("messages").insert({
@@ -182,9 +185,12 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
         payload: { name: me?.display_name, provider: me?.ai_provider, color: me?.avatar_color },
       });
 
-      respondSender({ data: { workspaceId } }).catch((e) => console.error(e));
+      respondSender({ data: { workspaceId } })
+        .then((r: any) => { if (r && r.ok === false) setErrorBanner("Something went wrong — try sending your message again"); })
+        .catch(() => setErrorBanner("Something went wrong — try sending your message again"));
+      respondCofounder({ data: { workspaceId } }).catch(() => {});
     } catch (e: any) {
-      toast.error(e?.message ?? "Send failed");
+      setErrorBanner("Something went wrong — try sending your message again");
     } finally {
       setSending(false);
     }
@@ -236,14 +242,21 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
         <Sparkles className="h-3 w-3" /> {generating ? "Generating..." : "Generate Claude Code Prompt"}
       </button>
       <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin px-4 md:px-6 py-6 space-y-4">
+        {errorBanner && (
+          <div className="bg-error/10 border border-error/40 text-error text-sm rounded p-3 flex items-center justify-between">
+            <span>{errorBanner}</span>
+            <button onClick={() => setErrorBanner(null)} className="text-error/70 hover:text-error"><X className="h-4 w-4" /></button>
+          </div>
+        )}
         {messages.map((m) => {
           const sender = membersById[m.sender_user_id];
           const color = sender?.avatar_color ?? "#666";
           const name = sender?.display_name ?? "?";
           const isAi = m.sender_type === "ai";
           const isMine = !isAi && m.sender_user_id === user.id;
-          const borderColor = m.ai_provider === "claude" ? "#6366f1" : m.ai_provider === "gpt" ? "#10b981" : "transparent";
-          const label = isAi ? `${name}'s ${m.ai_provider === "claude" ? "Claude" : "GPT"}` : name;
+          const borderColor = m.ai_provider === "claude" ? "#6366f1" : m.ai_provider === "gpt" ? "#10b981" : m.ai_provider === "gemini" ? "#4285F4" : "transparent";
+          const providerName = m.ai_provider === "claude" ? "Claude" : m.ai_provider === "gpt" ? "ChatGPT" : m.ai_provider === "gemini" ? "Gemini" : "AI";
+          const label = isAi ? `${name}'s ${providerName}` : name;
           return (
             <div key={m.id} className="flex gap-3 group">
               <Avatar name={name} color={color} size="sm" />
