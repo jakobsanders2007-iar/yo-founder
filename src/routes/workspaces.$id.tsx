@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth";
 import { Logo } from "@/components/Logo";
 import { Avatar } from "@/components/UserAvatar";
 import {
-  respondAsSenderAi, generatePrompt,
+  respondAsSenderAi, respondAsCofounderAi, generatePrompt,
 } from "@/lib/yofounder.functions";
 import { runClaudeCode } from "@/lib/integrations.functions";
 import { toast } from "sonner";
