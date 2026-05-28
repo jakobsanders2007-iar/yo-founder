@@ -229,10 +229,18 @@ async function respondForUser(opts: {
   // Read profile via admin (cofounder's keys not visible to caller via RLS)
   const { data: profile, error: pErr } = await supabaseAdmin
     .from("profiles")
-    .select("display_name, ai_provider, anthropic_key, openai_key, gemini_key")
+    .select("display_name, ai_provider")
     .eq("id", forUserId)
     .single();
   if (pErr || !profile) throw new Error("Profile not found");
+
+  const { data: secrets } = await supabaseAdmin
+    .from("profile_secrets")
+    .select("anthropic_key, openai_key, gemini_key")
+    .eq("user_id", forUserId)
+    .maybeSingle();
+  const profileWithKeys = { ...profile, ...(secrets ?? {}) };
+
 
   const sel = keyForProvider(profile);
   if (!sel) {
