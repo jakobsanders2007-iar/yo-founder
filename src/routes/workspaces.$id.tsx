@@ -42,6 +42,7 @@ function WorkspacePage() {
   const [ws, setWs] = useState<any>(null);
   const [members, setMembers] = useState<any[]>([]);
   const [codeDot, setCodeDot] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) navigate({ to: "/login" });
