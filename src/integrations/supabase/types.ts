@@ -161,48 +161,74 @@ export type Database = {
           },
         ]
       }
+      profile_secrets: {
+        Row: {
+          anthropic_key: string | null
+          created_at: string
+          gemini_key: string | null
+          github_token: string | null
+          openai_key: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          anthropic_key?: string | null
+          created_at?: string
+          gemini_key?: string | null
+          github_token?: string | null
+          openai_key?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          anthropic_key?: string | null
+          created_at?: string
+          gemini_key?: string | null
+          github_token?: string | null
+          openai_key?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profile_secrets_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           ai_provider: Database["public"]["Enums"]["ai_provider"] | null
-          anthropic_key: string | null
           avatar_color: string
           created_at: string
           display_name: string
-          gemini_key: string | null
-          github_token: string | null
           github_username: string | null
           id: string
           last_seen_at: string
           onboarded: boolean
-          openai_key: string | null
         }
         Insert: {
           ai_provider?: Database["public"]["Enums"]["ai_provider"] | null
-          anthropic_key?: string | null
           avatar_color?: string
           created_at?: string
           display_name?: string
-          gemini_key?: string | null
-          github_token?: string | null
           github_username?: string | null
           id: string
           last_seen_at?: string
           onboarded?: boolean
-          openai_key?: string | null
         }
         Update: {
           ai_provider?: Database["public"]["Enums"]["ai_provider"] | null
-          anthropic_key?: string | null
           avatar_color?: string
           created_at?: string
           display_name?: string
-          gemini_key?: string | null
-          github_token?: string | null
           github_username?: string | null
           id?: string
           last_seen_at?: string
           onboarded?: boolean
-          openai_key?: string | null
         }
         Relationships: []
       }
@@ -363,6 +389,41 @@ export type Database = {
           },
         ]
       }
+      workspace_secrets: {
+        Row: {
+          created_at: string
+          supabase_service_key: string | null
+          supabase_url: string | null
+          updated_at: string
+          vercel_token: string | null
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          supabase_service_key?: string | null
+          supabase_url?: string | null
+          updated_at?: string
+          vercel_token?: string | null
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          supabase_service_key?: string | null
+          supabase_url?: string | null
+          updated_at?: string
+          vercel_token?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_secrets_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workspaces: {
         Row: {
           ai_chat_settings: Json
@@ -379,12 +440,9 @@ export type Database = {
           name: string
           setup_progress: Json
           supabase_project_url: string | null
-          supabase_service_key: string | null
-          supabase_url: string | null
           vercel_project_id: string | null
           vercel_project_name: string | null
           vercel_project_url: string | null
-          vercel_token: string | null
         }
         Insert: {
           ai_chat_settings?: Json
@@ -401,12 +459,9 @@ export type Database = {
           name: string
           setup_progress?: Json
           supabase_project_url?: string | null
-          supabase_service_key?: string | null
-          supabase_url?: string | null
           vercel_project_id?: string | null
           vercel_project_name?: string | null
           vercel_project_url?: string | null
-          vercel_token?: string | null
         }
         Update: {
           ai_chat_settings?: Json
@@ -423,12 +478,9 @@ export type Database = {
           name?: string
           setup_progress?: Json
           supabase_project_url?: string | null
-          supabase_service_key?: string | null
-          supabase_url?: string | null
           vercel_project_id?: string | null
           vercel_project_name?: string | null
           vercel_project_url?: string | null
-          vercel_token?: string | null
         }
         Relationships: [
           {
