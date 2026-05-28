@@ -685,7 +685,7 @@ function CodeTab({ ws, workspaceId, user }: any) {
         running={isJobRunning || running}
         blockedByOther={blockedByOther}
         contextFiles={contextFiles}
-        onRemoveContext={(p) => setContextFiles((cur) => cur.filter((x) => x !== p))}
+        onRemoveContext={(p: string) => setContextFiles((cur) => cur.filter((x) => x !== p))}
         inputRef={promptRef}
       />
 
