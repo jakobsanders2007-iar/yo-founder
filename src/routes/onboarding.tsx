@@ -4,9 +4,9 @@ import { useServerFn } from "@tanstack/react-start";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { Logo } from "@/components/Logo";
-import { testAiKey, saveAiKey } from "@/lib/yofounder.functions";
+import { saveAiKey } from "@/lib/yofounder.functions";
 import { toast } from "sonner";
-import { Check, X, Github } from "lucide-react";
+import { Check, Github } from "lucide-react";
 
 const COLORS = ["#6366f1","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#f97316","#ec4899"];
 
@@ -23,13 +23,10 @@ function OnboardingPage() {
   const [color, setColor] = useState(COLORS[0]);
   const [provider, setProvider] = useState<"claude" | "gpt" | "gemini">("claude");
   const [aiKey, setAiKey] = useState("");
-  const [aiOk, setAiOk] = useState<null | boolean>(null);
-  const [aiErr, setAiErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [ghUsername, setGhUsername] = useState<string | null>(null);
   const [ghBusy, setGhBusy] = useState(false);
 
-  const testAi = useServerFn(testAiKey);
   const saveAi = useServerFn(saveAiKey);
 
   useEffect(() => {
@@ -71,20 +68,13 @@ function OnboardingPage() {
     setStep(2);
   };
 
-  const testAiBtn = async () => {
-    if (!aiKey.trim()) return;
-    setBusy(true); setAiErr(null); setAiOk(null);
-    const r = await testAi({ data: { provider, apiKey: aiKey.trim() } });
-    setBusy(false);
-    if (r.success) setAiOk(true);
-    else { setAiOk(false); setAiErr("That key didn't work — double-check and try again"); }
-  };
-
   const finishStep2 = async () => {
-    if (provider !== "gemini" && !aiOk) return toast.error("Please test your key first");
+    if (provider !== "gemini" && !aiKey.trim()) return toast.error("Please add your key");
     setBusy(true);
-    await saveAi({ data: { provider, apiKey: provider === "gemini" ? "" : aiKey.trim() } });
+    const result = await saveAi({ data: { provider, apiKey: provider === "gemini" ? "" : aiKey.trim() } }).catch(() => null);
     setBusy(false);
+    if (!result?.ok) return toast.error("Couldn't save your AI key — please try again");
+    setAiKey("");
     setStep(3);
   };
 
