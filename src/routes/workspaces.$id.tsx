@@ -8,12 +8,18 @@ import { Avatar } from "@/components/UserAvatar";
 import {
   respondAsSenderAi, respondAsCofounderAi, generatePrompt,
 } from "@/lib/yofounder.functions";
-import { runClaudeCode } from "@/lib/integrations.functions";
+import {
+  runClaudeCode, getGithubPRDetail, getRepoTree, getRepoFile,
+  approveAndPushPR, closeGithubPR, fetchVercelPreview,
+} from "@/lib/integrations.functions";
 import { toast } from "sonner";
 import {
   Github, Send, Sparkles, Copy, ExternalLink, ArrowLeft, X, Settings,
   Trash2, AlertTriangle, Plus, FileCode, Check, Loader2, Circle, AlertCircle,
+  Play, RefreshCw, Maximize2, Link2, ChevronRight, ChevronDown, Folder, File as FileIcon,
+  Terminal, GitPullRequest, Eye, FileDiff, Files as FilesIcon, Wrench, Zap,
 } from "lucide-react";
+import confetti from "canvas-confetti";
 import { cn } from "@/lib/utils";
 import { GithubTab } from "@/components/tabs/GithubTab";
 import { VercelTab } from "@/components/tabs/VercelTab";
