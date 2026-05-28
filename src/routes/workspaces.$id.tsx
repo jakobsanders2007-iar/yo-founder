@@ -94,9 +94,18 @@ function WorkspacePage() {
           <div className="flex -space-x-2">
             {members.map((m, i) => {
               const online = m.profiles?.last_seen_at && (Date.now() - new Date(m.profiles.last_seen_at).getTime() < 5*60*1000);
-              return <Avatar key={i} name={m.profiles?.display_name ?? "?"} color={m.profiles?.avatar_color ?? "#666"} size="sm" online={online} />;
+              const prov = m.profiles?.ai_provider;
+              const provLabel = prov === "claude" ? "Claude" : prov === "gpt" ? "ChatGPT" : prov === "gemini" ? "Gemini" : "no AI yet";
+              return <div key={i} title={`${m.profiles?.display_name ?? "?"} — using ${provLabel}`}>
+                <Avatar name={m.profiles?.display_name ?? "?"} color={m.profiles?.avatar_color ?? "#666"} size="sm" online={online} />
+              </div>;
             })}
           </div>
+          <button onClick={() => setInviteOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-brand text-primary-foreground hover:opacity-90 transition"
+            title="Invite a co-founder">
+            <UserPlus className="h-3.5 w-3.5" /> Invite
+          </button>
           <Link to="/settings" className="text-muted-foreground hover:text-foreground" title="Settings">
             <Settings className="h-4 w-4" />
           </Link>
