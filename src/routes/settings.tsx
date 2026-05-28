@@ -108,6 +108,7 @@ function SettingsPage() {
       ai_provider: provider,
       has_anthropic: provider === "claude" ? true : p?.has_anthropic,
       has_openai: provider === "gpt" ? true : p?.has_openai,
+      has_gemini: provider === "gemini" ? true : p?.has_gemini,
     }));
     toast.success("AI key saved");
   };
