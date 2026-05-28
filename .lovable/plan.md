@@ -1,92 +1,101 @@
+# Code Tab Premium Rebuild
 
-# Self-Contained Integrations + Guided Setup
+Rebuild the Code tab inside `src/routes/workspaces.$id.tsx` into a full-screen execution layer with 4 sub-tabs, a top status bar, sticky prompt input, and approval flow. Vercel preview URL is the live preview — no local dev server.
 
-This is a large build. Below is the scope, the order I'll ship it in, and a few decisions I need from you before I start so I don't waste cycles.
+## 1. Database additions
 
-## Scope summary
+Migration adds 4 columns to `prompts`:
+- `summary text` — plain English what changed
+- `files_affected text[]` — list of file paths
+- `next_steps text[]` — 1-3 suggested next steps
+- `vercel_preview_url text` — iframe src
 
-Rebuild four tabs inside `/workspaces/$id` so users never leave YoFounder:
+No new tables. RLS already covers the row; new columns inherit.
 
-1. **GitHub tab** — 3-step guided setup (account → repo → token) when not connected. Once connected: repo summary + open issues + recent commits (already partly covered by the existing settings/saved token).
-2. **Vercel tab** — guided setup (account → token → pick project), then in-app dashboard: current deployment, history (last 10), build logs (auto-refresh while building), env vars (list/add/delete), redeploy button.
-3. **Supabase tab** — guided setup (account → project → URL + service_role key), then in-app dashboard: stats row, auth users + recent signups, tables list with data grid (paginate, add row, delete row), simple SQL editor, auth audit log.
-4. **Domain tab** — guided GoDaddy purchase flow, save domain, DNS checklist with persistence, "Check if live" health check.
+## 2. Server function additions (`src/lib/integrations.functions.ts`)
 
-Plus:
-- Connection status dots (green/gray) next to each tab name in the workspace top bar.
-- New workspace columns: `vercel_token`, `vercel_project_id`, `vercel_project_name`, `supabase_url`, `supabase_service_key`, `dns_checklist` (already exists), `domain_last_checked_at`, `domain_last_status`.
-- All API calls go through **TanStack server functions** (this stack does not use Supabase Edge Functions for app-internal logic — your spec says `/functions/v1/...` but those will be `createServerFn` RPCs with identical security: tokens stay server-side, never reach the browser). Same guarantee, fewer moving parts.
+All GitHub/Vercel calls stay server-side, reading tokens from `profiles` / `workspaces`. New server functions:
 
-## Decisions I need from you
+- `getRepoTree({ workspaceId })` — `GET /repos/{owner}/{repo}/git/trees/{branch}?recursive=1`. Returns `[{ path, type, sha }]` for the Files tab.
+- `getRepoFile({ workspaceId, path })` — `GET /repos/{owner}/{repo}/contents/{path}`. Returns `{ path, content, size, lines }`.
+- `getPrDiff({ workspaceId, prNumber })` — `GET /repos/{owner}/{repo}/pulls/{n}/files`. Returns `[{ filename, status, additions, deletions, patch }]` for the Diff tab.
+- `mergePr({ workspaceId, promptId, prNumber })` — `PUT /repos/{owner}/{repo}/pulls/{n}/merge`. On success updates `prompts.status='deployed'` and fires `fetchVercelPreview`.
+- `closePr({ workspaceId, promptId, prNumber })` — `PATCH .../pulls/{n}` with `state: closed`, resets prompt status to `draft`.
+- `fetchVercelPreview({ workspaceId, promptId })` — `GET https://api.vercel.com/v6/deployments?projectId=...&limit=1` using `vercel_token` from workspace; saves `vercel_preview_url` on the prompt row.
 
-**1. Where do Vercel + Supabase credentials live?**
-Your spec implies **per workspace** (different project per workspace). That means the `vercel_token` and `supabase_service_key` go on the `workspaces` table — shared by every member of that workspace. Confirm that's right, or say "per user on profiles" if you'd rather each member connect their own.
+Extend `generateClaudeCodePrompt` (in `yofounder.functions.ts`) to instruct the model to also return `summary`, `files_affected`, `next_steps` and persist them on the row.
 
-**2. Real Supabase SQL editor against the user's OWN Supabase project — confirm?**
-The "Supabase tab" lets a user paste their service_role key and then run arbitrary SQL against *their* project. That's powerful and a footgun (DROP TABLE, etc.). I'll ship it with a big red warning + a confirm dialog for destructive-looking statements (DROP/TRUNCATE/DELETE without WHERE). OK?
+## 3. UI rebuild (in same `workspaces.$id.tsx`)
 
-**3. Build logs auto-refresh cadence**
-Vercel build logs while `building`: poll every 3s, stop on `ready`/`error`. OK or you want realtime?
+Replace `CodeTab` body. New layout:
 
-**4. Scope of this single turn**
-This is genuinely ~6–10 hours of focused work (4 large pages, ~15 server functions, 1 migration, status-dot wiring, guided flows with persisted progress, SQL grid component, env-var manager). I can ship it in two passes:
+```text
+┌──────────────────────────────────────────────────────┐
+│ repo · branch · [status badge]      [Push to GitHub] │  top bar
+├──────────────────────────────────────────────────────┤
+│ Preview | Diff | Files | Logs                        │  sub-tabs
+├──────────────────────────────────────────────────────┤
+│                                                      │
+│              active sub-tab content                  │
+│                                                      │
+│ ─────────────── change summary card (if job done) ── │
+│ ─────────────── approval card (if pr_opened) ─────── │
+├──────────────────────────────────────────────────────┤
+│ [textarea] [context chips]              [Run]        │  sticky bottom
+└──────────────────────────────────────────────────────┘
+```
 
-- **Pass A (this turn):** migration + all server functions + GitHub tab + Vercel tab (setup flow + current deployment + history + redeploy) + connection dots.
-- **Pass B (next turn):** Vercel env vars + build logs viewer + full Supabase tab + Domain tab.
+Sub-components (all inline in same file to keep diff focused — extract later if file >1100 lines):
 
-Or I attempt the whole thing in one giant turn and accept that some polish (loading states, edge cases) will land in a follow-up. **Tell me A+B or "go big".**
+- `<CodeTopBar />` — repo, branch, `<BuildStatusBadge />`, "Push to GitHub" (enabled when `selected.status === 'pr_opened'`).
+- `<BuildStatusBadge status />` — 8 states with icon + label + amber pulse on active.
+- `<SubTabBar />` — Preview/Diff/Files/Logs with amber underline on active, scrollable on mobile.
+- `<PreviewPane url />` — empty state (grid bg, logo, amber CTA) → focuses prompt input; otherwise iframe with refresh / open / copy bar; skeleton on load; fallback message after 5s.
+- `<DiffPane prompt />` — fetches `getPrDiff` when `pr_number` exists. Left list 30%, right unified diff 70%, IBM Plex Mono, +/- coloring. Empty state when no PR.
+- `<FilesPane workspaceId />` — fetches `getRepoTree`, lazy-renders folders; selected file fetched via `getRepoFile`. "Add to prompt context" pushes path into `contextFiles` state.
+- `<LogsPane job />` — derives log lines from job status/error history with timestamps; "Fix with AI" button on red lines pre-fills + focuses prompt.
+- `<ChangeSummaryCard prompt />` — amber left border, files_affected list, summary, next_steps.
+- `<ApprovalCard prompt />` — three buttons: Approve&Push (calls `mergePr`, confetti via `canvas-confetti`), Request Changes (pre-fills prompt), Reject (confirm → `closePr`).
+- `<PromptDock />` — sticky textarea + chips + Run + char count + Cmd+Enter; disabled with "working..." while running.
+- `<EmptyState />` — full-screen when `prompts.length === 0`.
 
-## Plan (assuming defaults: per-workspace creds, SQL editor with warning, 3s poll, A+B split)
+Existing functionality preserved: prompt list still backs the view (rename "New change" stays); existing `runClaudeCode` server fn still triggers the job; realtime subscriptions for `prompts` and `claude_code_jobs` unchanged.
 
-### Pass A
+## 4. Status mapping
 
-1. **Migration**: add to `workspaces`:
-   - `vercel_token text`, `vercel_project_id text`, `vercel_project_name text`
-   - `supabase_url text`, `supabase_service_key text`
-   - `domain_last_checked_at timestamptz`, `domain_last_status int`
-   - `setup_progress jsonb default '{}'::jsonb` (tracks which guided steps each integration has completed: `{github: 2, vercel: 1, supabase: 0, domain: 0}`)
-   - Keep all existing RLS — workspace members can read/write their own workspace.
+8 visual states derive from `job.status` + `prompt.status`:
+- no job → Waiting
+- `queued|reading` → Thinking
+- `coding` → Building
+- `committing` → Saving
+- `pr_opened` → Reviewing
+- `merging` (transient) → Approved
+- `deployed` → Live
+- `failed` → Error
 
-2. **Server functions** (`src/lib/integrations.functions.ts`):
-   - `testVercelToken({token})` → GET /v2/user → `{username, email}`
-   - `listVercelProjects({workspaceId})` → GET /v9/projects
-   - `saveVercelConnection({workspaceId, token, projectId, projectName})`
-   - `getVercelDeployments({workspaceId})` → GET /v6/deployments?projectId=&limit=10
-   - `triggerVercelDeploy({workspaceId})` → POST /v13/deployments
-   - `getVercelEnvVars({workspaceId})`
-   - `addVercelEnvVar({workspaceId, key, value, target})`
-   - `deleteVercelEnvVar({workspaceId, envId})`
-   - `getVercelBuildLogs({workspaceId, deploymentId})`
-   - `testSupabaseConnection({url, serviceKey})` — hit `${url}/rest/v1/` with apikey header
-   - `saveSupabaseConnection({workspaceId, url, serviceKey})`
-   - `getSupabaseReport({workspaceId})` — auth user count + recent signups + public tables + sizes
-   - `getSupabaseTableData({workspaceId, table, page})`
-   - `runSupabaseQuery({workspaceId, sql})` — proxies via PostgREST RPC or direct PG (will use the user-supplied service key over PostgREST `/rest/v1/rpc/` where possible; for raw SQL I'll create a `exec_sql` RPC instruction in the guided setup, OR use the SQL HTTP endpoint via `pg-meta` if available)
-   - `getSupabaseAuthLogs({workspaceId})`
-   - `checkDomainLive({workspaceId})` → fetch with 5s timeout, persist status
+## 5. Confetti + deps
 
-3. **GitHub tab** (in `workspaces.$id.tsx` tab content): 3-step setup card when no token; once connected, show repo summary + link to settings to manage.
+Add `canvas-confetti` (~5kb) for the approve animation. No other new deps — diffs rendered with custom component (no react-diff-viewer needed for unified view).
 
-4. **Vercel tab**: 3-step setup → dashboard with current deploy card, history list, redeploy button.
+## 6. Mobile
 
-5. **Connection dots**: small colored dots in the tab bar, derived from a single `useQuery(['workspace-integrations', id])` that returns booleans.
+- Sub-tabs become horizontally scrollable strip with `overflow-x-auto`
+- Diff/Files panes stack vertically (`flex-col md:flex-row`)
+- Prompt dock stays sticky at bottom
 
-### Pass B
+## 7. What stays untouched
 
-6. Vercel env vars manager + build logs viewer with 3s poll.
-7. Supabase tab full dashboard (stats, auth, tables grid, SQL editor with warning + confirm).
-8. Domain tab guided setup + checklist persistence + live check.
+- `__root.tsx`, login, settings, onboarding, other tabs (Chat / GitHub / Vercel / Supabase / Domain)
+- `runClaudeCode` server fn signature
+- All other existing server functions
+- Plain-English copy rules continue to apply throughout (no "repo/PR/merge/branch" in user-facing strings — internal labels say "version" / "change request" / "approve")
 
-## Notes on the "edge functions" in your spec
+## Order of execution
 
-You wrote things like `/functions/v1/vercel-setup-test`. On this TanStack Start stack, those will be **typed server functions** (`createServerFn`) callable from the frontend as `await testVercelToken({data: {...}})`. The security model is identical (tokens stay on the server, validated by `requireSupabaseAuth` middleware, never exposed to the browser bundle). If you specifically want literal Supabase Edge Functions (separate deploy, Deno runtime, different log surface) say so and I'll switch — but server functions are the recommended path here.
+1. Migration (prompts columns) — wait for approval
+2. Server fns in `integrations.functions.ts` + small extension to `yofounder.functions.ts`
+3. Install `canvas-confetti`
+4. Rewrite `CodeTab` + sub-components in `workspaces.$id.tsx`
+5. Smoke-test build, fix typecheck errors
 
----
-
-**Reply with:**
-1. Confirm per-workspace creds (or "per user")
-2. Confirm SQL editor with warning (or "no raw SQL")
-3. Confirm A+B split (or "go big in one turn")
-4. Anything else to change
-
-Then I'll start shipping.
+After approval I'll start with the migration.
