@@ -836,11 +836,73 @@ export const mergeGithubPR = createServerFn({ method: "POST" })
   });
 
 /* =====================================================
-   CLAUDE CODE (Railway)
+   RUN CODE CHANGE (GitHub API + Claude)
    ===================================================== */
 
-const RAILWAY_URL = "https://yo-founder-production.up.railway.app";
-const RAILWAY_SECRET = "yofounder2024";
+function b64encode(s: string): string {
+  // Edge-runtime safe base64 of utf8 string
+  if (typeof Buffer !== "undefined") return Buffer.from(s, "utf8").toString("base64");
+  const bytes = new TextEncoder().encode(s);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  // @ts-ignore
+  return btoa(bin);
+}
+function b64decode(s: string): string {
+  if (typeof Buffer !== "undefined") return Buffer.from(s, "base64").toString("utf8");
+  // @ts-ignore
+  const bin = atob(s);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+
+function scorePathForPrompt(path: string, promptLc: string): number {
+  let score = 0;
+  const lc = path.toLowerCase();
+  if (lc.startsWith("src/")) score += 10;
+  if (lc.includes("/components/")) score += 4;
+  if (lc.includes("/routes/")) score += 4;
+  if (/\.(tsx?|jsx?|css|md|json)$/.test(lc)) score += 3;
+  if (/(test|spec|node_modules|dist|build|\.lock)/.test(lc)) score -= 50;
+  // keyword bias
+  for (const w of promptLc.split(/[^a-z0-9]+/).filter((w) => w.length > 3)) {
+    if (lc.includes(w)) score += 6;
+  }
+  return score;
+}
+
+async function callClaudeRaw(apiKey: string, system: string, userText: string, maxTokens: number): Promise<string> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 120_000);
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      signal: ctrl.signal,
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-5",
+        max_tokens: maxTokens,
+        system,
+        messages: [{ role: "user", content: userText }],
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Claude API error ${res.status}: ${text.slice(0, 300)}`);
+    }
+    const data = await res.json();
+    const text = data?.content?.[0]?.text;
+    if (!text) throw new Error("Claude returned no text");
+    return text as string;
+  } finally {
+    clearTimeout(t);
+  }
+}
 
 export const runClaudeCode = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -853,49 +915,53 @@ export const runClaudeCode = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context as any;
 
-    // Workspace + repo
     const ws = await getWorkspace(supabase, data.workspaceId);
     if (!ws.github_repo) throw new Error("No GitHub repo connected to this workspace");
 
-    // Rate limit: one active job per workspace
+    // Rate limit
     const { data: active } = await supabase
       .from("claude_code_jobs")
       .select("id, status")
       .eq("workspace_id", data.workspaceId)
-      .in("status", ["queued", "cloning", "coding", "committing"])
+      .in("status", ["queued", "reading", "coding", "committing"])
       .limit(1);
     if ((active ?? []).length > 0) {
-      throw new Error("Claude Code is already running for this workspace");
+      throw new Error("A change is already in progress for this workspace");
     }
 
-    // Prompt
     const { data: prompt, error: pErr } = await supabase
       .from("prompts").select("id, title, content").eq("id", data.promptId).single();
     if (pErr || !prompt) throw new Error("Prompt not found");
 
-    // GitHub token: prefer current user, fallback to workspace owner
+    // GitHub token: requester, then workspace owner
     const { data: meProf } = await supabase
-      .from("profiles").select("github_token").eq("id", userId).single();
+      .from("profiles").select("github_token, anthropic_key").eq("id", userId).single();
     let token: string | null = meProf?.github_token ?? null;
     if (!token) {
-      const { data: owners } = await supabase
+      const { data: ownerProf } = await supabase
+        .from("profiles").select("github_token").eq("id", ws.created_by).single();
+      token = ownerProf?.github_token ?? null;
+    }
+    if (!token) throw new Error("No GitHub access set up. Connect GitHub in settings.");
+
+    // Claude key: requester first then any member
+    let claudeKey: string | null = meProf?.anthropic_key ?? null;
+    if (!claudeKey) {
+      const { data: members } = await supabase
         .from("workspace_members")
-        .select("user_id, profiles:user_id(github_token)")
-        .eq("workspace_id", data.workspaceId)
-        .eq("role", "owner");
-      for (const o of owners ?? []) {
-        const t = (o as any).profiles?.github_token;
-        if (t) { token = t; break; }
+        .select("profiles:user_id(anthropic_key)")
+        .eq("workspace_id", data.workspaceId);
+      for (const m of members ?? []) {
+        const k = (m as any).profiles?.anthropic_key;
+        if (k) { claudeKey = k; break; }
       }
     }
-    if (!token) throw new Error("No GitHub token available. Connect GitHub in settings.");
+    if (!claudeKey) throw new Error("A Claude API key is required to make code changes. Add one in Settings.");
 
-    // Branch name
     const slug = (prompt.title || "change").toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "change";
     const branch = `yofounder/${slug}-${Date.now()}`;
     const baseBranch = ws.github_branch || "main";
 
-    // Create job row
     const { data: job, error: jErr } = await supabase
       .from("claude_code_jobs")
       .insert({
@@ -909,36 +975,166 @@ export const runClaudeCode = createServerFn({ method: "POST" })
       .single();
     if (jErr || !job) throw new Error(jErr?.message ?? "Failed to create job");
 
-    // Fire Railway
-    try {
-      const res = await fetchWithTimeout(`${RAILWAY_URL}/run-claude-code`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          Authorization: `Bearer ${RAILWAY_SECRET}`,
-        },
-        body: JSON.stringify({
-          job_id: job.id,
-          repo: ws.github_repo,
-          branch,
-          base_branch: baseBranch,
-          prompt: prompt.content,
-          github_token: token,
-        }),
-      }, 30_000);
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        const errMsg = `Railway error ${res.status}: ${text.slice(0, 300)}`;
-        await supabase.from("claude_code_jobs").update({ status: "failed", error: errMsg }).eq("id", job.id);
-        throw new Error(errMsg);
+    // Run the work in the background but await long enough for early failures
+    const work = (async () => {
+      const repo = ws.github_repo as string;
+      const ghHead = ghHeaders(token!);
+      const setStatus = async (status: string, fields: Record<string, any> = {}) => {
+        await supabase.from("claude_code_jobs").update({ status, updated_at: new Date().toISOString(), ...fields }).eq("id", job.id);
+      };
+      const fail = async (msg: string) => {
+        await setStatus("failed", { error: msg, last_message: null });
+      };
+
+      try {
+        await setStatus("reading", { last_message: "Reading your code from GitHub" });
+
+        // 1. Get base branch ref + tree
+        const refRes = await fetchWithTimeout(`https://api.github.com/repos/${repo}/git/ref/heads/${baseBranch}`, { headers: ghHead });
+        if (!refRes.ok) { await fail(`Couldn't find branch ${baseBranch}`); return; }
+        const refJson = await refRes.json();
+        const baseSha = refJson.object.sha as string;
+
+        const treeRes = await fetchWithTimeout(`https://api.github.com/repos/${repo}/git/trees/${baseSha}?recursive=1`, { headers: ghHead });
+        if (!treeRes.ok) { await fail("Couldn't read the file list"); return; }
+        const treeJson = await treeRes.json();
+        const blobs: { path: string; sha: string }[] = (treeJson.tree ?? [])
+          .filter((n: any) => n.type === "blob")
+          .map((n: any) => ({ path: n.path, sha: n.sha }));
+
+        // Pick most relevant files
+        const promptLc = `${prompt.title} ${prompt.content}`.toLowerCase();
+        const ranked = blobs
+          .map((b) => ({ ...b, score: scorePathForPrompt(b.path, promptLc) }))
+          .filter((b) => b.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 10);
+
+        // Fetch contents
+        const files: { path: string; sha: string; content: string }[] = [];
+        for (const f of ranked) {
+          try {
+            const c = await fetchWithTimeout(`https://api.github.com/repos/${repo}/contents/${encodeURIComponent(f.path)}?ref=${encodeURIComponent(baseBranch)}`, { headers: ghHead });
+            if (!c.ok) continue;
+            const j = await c.json();
+            const text = j.encoding === "base64" ? b64decode((j.content || "").replace(/\n/g, "")) : "";
+            if (text && text.length < 80_000) {
+              files.push({ path: f.path, sha: j.sha, content: text });
+            }
+          } catch {}
+        }
+
+        await setStatus("coding", { last_message: "Asking Claude to make the changes" });
+
+        const codeContext = files.map((f) => `// FILE: ${f.path}\n${f.content}`).join("\n\n========\n\n");
+        const system = `You are an expert software engineer. You will be given a codebase and a task. Implement the requested change and return the modified files as JSON.
+
+Return ONLY a JSON array of changed files:
+[
+  {
+    "path": "src/components/Example.tsx",
+    "content": "full new file content here"
+  }
+]
+
+Only include files you actually changed. Return valid JSON only, no explanation, no markdown.`;
+        const userText = `Codebase files:\n\n${codeContext}\n\nTask: ${prompt.title}\n\n${prompt.content}`;
+
+        const raw = await callClaudeRaw(claudeKey!, system, userText, 4000);
+        let cleaned = raw.trim().replace(/^```json\s*/i, "").replace(/^```\s*/, "").replace(/```\s*$/, "").trim();
+        let changes: { path: string; content: string }[];
+        try {
+          changes = JSON.parse(cleaned);
+        } catch {
+          const m = cleaned.match(/\[[\s\S]*\]/);
+          if (!m) throw new Error("Claude didn't return valid JSON");
+          changes = JSON.parse(m[0]);
+        }
+        if (!Array.isArray(changes) || changes.length === 0) {
+          await fail("No file changes were proposed");
+          return;
+        }
+
+        await setStatus("committing", { last_message: `Saving ${changes.length} file change(s) to a new version` });
+
+        // 2. Create branch from base
+        const newRefRes = await fetchWithTimeout(`https://api.github.com/repos/${repo}/git/refs`, {
+          method: "POST",
+          headers: { ...ghHead, "content-type": "application/json" },
+          body: JSON.stringify({ ref: `refs/heads/${branch}`, sha: baseSha }),
+        });
+        if (!newRefRes.ok) {
+          const t = await newRefRes.text().catch(() => "");
+          await fail(`Could not create new version: ${t.slice(0, 200)}`);
+          return;
+        }
+
+        // 3. PUT each file
+        for (const ch of changes) {
+          if (!ch.path || typeof ch.content !== "string") continue;
+          // get existing sha if any
+          let existingSha: string | undefined;
+          const cur = await fetchWithTimeout(`https://api.github.com/repos/${repo}/contents/${encodeURIComponent(ch.path)}?ref=${encodeURIComponent(branch)}`, { headers: ghHead });
+          if (cur.ok) {
+            const j = await cur.json().catch(() => null);
+            if (j && j.sha) existingSha = j.sha;
+          }
+          const putRes = await fetchWithTimeout(`https://api.github.com/repos/${repo}/contents/${encodeURIComponent(ch.path)}`, {
+            method: "PUT",
+            headers: { ...ghHead, "content-type": "application/json" },
+            body: JSON.stringify({
+              message: `[YoFounder] ${prompt.title}`,
+              content: b64encode(ch.content),
+              branch,
+              ...(existingSha ? { sha: existingSha } : {}),
+            }),
+          });
+          if (!putRes.ok) {
+            const t = await putRes.text().catch(() => "");
+            await fail(`Couldn't save ${ch.path}: ${t.slice(0, 200)}`);
+            return;
+          }
+        }
+
+        await setStatus("committing", { last_message: "Sending changes for review" });
+
+        // 4. Open PR
+        const prRes = await fetchWithTimeout(`https://api.github.com/repos/${repo}/pulls`, {
+          method: "POST",
+          headers: { ...ghHead, "content-type": "application/json" },
+          body: JSON.stringify({
+            title: `[YoFounder] ${prompt.title}`,
+            body: `Changes implemented by YoFounder AI\n\n${prompt.content}`,
+            head: branch,
+            base: baseBranch,
+          }),
+        });
+        if (!prRes.ok) {
+          const t = await prRes.text().catch(() => "");
+          await fail(`Couldn't open change request: ${t.slice(0, 200)}`);
+          return;
+        }
+        const pr = await prRes.json();
+        await setStatus("pr_opened", {
+          last_message: "Done — your change request is ready to review",
+          pr_url: pr.html_url,
+          pr_number: pr.number,
+        });
+
+        await supabase.from("prompts").update({
+          status: "pushed",
+          github_issue_url: pr.html_url,
+          github_issue_number: pr.number,
+          claude_code_job_id: job.id,
+        }).eq("id", prompt.id);
+      } catch (e: any) {
+        await fail(e?.message ?? "Something went wrong");
       }
-    } catch (e: any) {
-      await supabase.from("claude_code_jobs").update({
-        status: "failed",
-        error: e?.message ?? "Failed to reach Claude Code server",
-      }).eq("id", job.id);
-      throw e;
-    }
+    })();
+
+    // Don't fully await — but give it a moment to surface immediate errors
+    await Promise.race([work, new Promise((r) => setTimeout(r, 1500))]);
 
     return { jobId: job.id as string, branch };
   });
+
