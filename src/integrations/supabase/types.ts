@@ -14,6 +14,73 @@ export type Database = {
   }
   public: {
     Tables: {
+      claude_code_jobs: {
+        Row: {
+          branch_name: string | null
+          created_at: string | null
+          error: string | null
+          id: string
+          last_message: string | null
+          pr_number: number | null
+          pr_url: string | null
+          proposal_id: string | null
+          status: string | null
+          triggered_by: string | null
+          updated_at: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          branch_name?: string | null
+          created_at?: string | null
+          error?: string | null
+          id?: string
+          last_message?: string | null
+          pr_number?: number | null
+          pr_url?: string | null
+          proposal_id?: string | null
+          status?: string | null
+          triggered_by?: string | null
+          updated_at?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          branch_name?: string | null
+          created_at?: string | null
+          error?: string | null
+          id?: string
+          last_message?: string | null
+          pr_number?: number | null
+          pr_url?: string | null
+          proposal_id?: string | null
+          status?: string | null
+          triggered_by?: string | null
+          updated_at?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "claude_code_jobs_proposal_id_fkey"
+            columns: ["proposal_id"]
+            isOneToOne: false
+            referencedRelation: "prompts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "claude_code_jobs_triggered_by_fkey"
+            columns: ["triggered_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "claude_code_jobs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           ai_provider: Database["public"]["Enums"]["ai_provider"] | null
@@ -106,6 +173,7 @@ export type Database = {
       }
       prompts: {
         Row: {
+          claude_code_job_id: string | null
           content: string
           created_at: string
           created_by: string
@@ -117,6 +185,7 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          claude_code_job_id?: string | null
           content: string
           created_at?: string
           created_by: string
@@ -128,6 +197,7 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          claude_code_job_id?: string | null
           content?: string
           created_at?: string
           created_by?: string
@@ -139,6 +209,13 @@ export type Database = {
           workspace_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "prompts_claude_code_job_id_fkey"
+            columns: ["claude_code_job_id"]
+            isOneToOne: false
+            referencedRelation: "claude_code_jobs"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "prompts_created_by_fkey"
             columns: ["created_by"]
