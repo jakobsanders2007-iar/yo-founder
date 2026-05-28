@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/Card";
-import { ExternalLink, Check, RefreshCw, GitPullRequest, GitCommit, AlertCircle, ChevronDown, ChevronRight, X, Github, Folder, FileText } from "lucide-react";
+import { ExternalLink, Check, RefreshCw, GitPullRequest, GitCommit, AlertCircle, ChevronDown, ChevronRight, X, Github, Folder, FileText, Eye, EyeOff, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import {
   saveWorkspaceRepo,
@@ -14,6 +14,7 @@ import {
   mergeGithubPR,
   listGithubRepoFiles,
 } from "@/lib/integrations.functions";
+import { testGithubToken, saveGithubToken } from "@/lib/yofounder.functions";
 import { useAuth } from "@/lib/auth";
 
 type Repo = { full_name: string; private: boolean; updated_at: string; description: string | null };
