@@ -193,15 +193,35 @@ function SettingsPage() {
             </div>
           ) : (
             <div>
-              <p className="text-sm text-muted-foreground mb-4">Connect your GitHub to manage your code.</p>
-              <button
-                onClick={connectGithub}
-                disabled={ghBusy}
-                className="bg-brand text-primary-foreground font-semibold px-5 py-2.5 rounded-lg text-sm hover:opacity-90 disabled:opacity-50 inline-flex items-center gap-2"
-              >
-                <Github className="h-4 w-4" />
-                {ghBusy ? "Connecting..." : "Connect GitHub"}
-              </button>
+              <p className="text-sm text-muted-foreground mb-3">
+                Paste a GitHub <a href="https://github.com/settings/tokens/new?scopes=repo,read:user&description=YoFounder" target="_blank" rel="noreferrer" className="text-brand underline">personal access token</a> with <code className="font-mono text-xs">repo</code> + <code className="font-mono text-xs">read:user</code> scopes.
+              </p>
+              <label className="text-xs text-muted-foreground">GitHub personal access token</label>
+              <div className="mt-1 relative">
+                <input
+                  type={showGh ? "text" : "password"}
+                  value={ghToken}
+                  onChange={(e) => { setGhToken(e.target.value); setGhState(null); }}
+                  className="w-full bg-background border border-border rounded px-3 py-2 pr-10 text-sm font-mono focus:outline-none focus:border-brand"
+                  placeholder="ghp_... or github_pat_..."
+                />
+                <button type="button" onClick={() => setShowGh((s) => !s)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  {showGh ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  onClick={saveGithubFromToken}
+                  disabled={ghBusy || !ghToken.trim()}
+                  className="bg-brand text-primary-foreground font-medium px-4 py-2 rounded text-sm hover:opacity-90 disabled:opacity-50 inline-flex items-center gap-2"
+                >
+                  <Github className="h-4 w-4" />
+                  {ghBusy ? "Testing..." : "Test & Save"}
+                </button>
+                {ghState?.ok && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {ghState.msg}</span>}
+                {ghState && !ghState.ok && <span className="text-error text-sm flex items-center gap-1"><X className="h-4 w-4" /> {ghState.msg}</span>}
+              </div>
             </div>
           )}
         </section>
