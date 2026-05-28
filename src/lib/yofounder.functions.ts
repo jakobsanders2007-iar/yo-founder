@@ -312,13 +312,13 @@ export const generatePrompt = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context as any;
-    const { data: me } = await supabase
-      .from("profiles")
-      .select("anthropic_key, openai_key, gemini_key, ai_provider, display_name")
-      .eq("id", userId)
-      .single();
+    const [{ data: prof }, { data: sec }] = await Promise.all([
+      supabase.from("profiles").select("ai_provider, display_name").eq("id", userId).single(),
+      supabase.from("profile_secrets").select("anthropic_key, openai_key, gemini_key").eq("user_id", userId).maybeSingle(),
+    ]);
+    const me = { ...(prof ?? {}), ...(sec ?? {}) } as any;
 
-    let sel = keyForProvider(me ?? {});
+    let sel = keyForProvider(me);
     if (!sel) {
       // any provider key on profile, or gemini server key
       if (me?.anthropic_key) sel = { provider: "claude", key: me.anthropic_key };
