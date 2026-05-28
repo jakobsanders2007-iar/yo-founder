@@ -132,9 +132,79 @@ function WorkspacePage() {
         {tab === "supabase" && <SupabaseTab ws={ws} onWsUpdate={reloadWs} />}
         {tab === "domain" && <DomainTab ws={ws} onWsUpdate={reloadWs} />}
       </main>
+      {inviteOpen && <InviteModal workspaceId={workspaceId} workspaceName={ws.name} onClose={() => setInviteOpen(false)} />}
     </div>
   );
 }
+
+function InviteModal({ workspaceId, workspaceName, onClose }: { workspaceId: string; workspaceName: string; onClose: () => void }) {
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ link: string; emailed: boolean; reason?: string } | null>(null);
+  const invite = useServerFn(sendInvite);
+
+  const submit = async () => {
+    if (!email.trim()) return;
+    setBusy(true);
+    try {
+      const r = await invite({ data: { workspaceId, email: email.trim() } });
+      setResult({ link: r.link, emailed: r.emailed, reason: r.reason });
+      if (r.emailed) toast.success(`Invite sent to ${email.trim()}`);
+      else toast.message("Invite created — share the link", { description: r.reason });
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to send invite");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center px-4" onClick={onClose}>
+      <div className="bg-surface border border-border rounded-lg p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Invite a co-founder to {workspaceName}</h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+        </div>
+        {!result ? (
+          <>
+            <p className="text-sm text-muted-foreground mb-4">
+              They'll get an email with a link to join. Up to 8 members per workspace.
+            </p>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+              placeholder="cofounder@example.com" autoFocus
+              onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+              className="w-full bg-background border border-border rounded px-3 py-2 text-sm mb-4 focus:outline-none focus:border-brand" />
+            <div className="flex justify-end gap-2">
+              <button onClick={onClose} className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground">Cancel</button>
+              <button onClick={submit} disabled={busy || !email.trim()}
+                className="px-4 py-2 bg-brand text-primary-foreground rounded text-sm font-medium hover:opacity-90 disabled:opacity-50">
+                {busy ? "Sending..." : "Send Invite"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-sm mb-2">
+              {result.emailed ? "✓ Email sent." : "Couldn't email — share this link:"}
+            </p>
+            {result.reason && !result.emailed && <p className="text-xs text-muted-foreground mb-3">{result.reason}</p>}
+            <div className="flex gap-2 mb-4">
+              <input readOnly value={result.link}
+                className="flex-1 bg-background border border-border rounded px-3 py-2 text-xs font-mono" />
+              <button onClick={() => { navigator.clipboard.writeText(result.link); toast.success("Copied"); }}
+                className="px-3 py-2 bg-background border border-border rounded text-xs hover:border-brand"><Copy className="h-3.5 w-3.5" /></button>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => { setResult(null); setEmail(""); }} className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground">Invite another</button>
+              <button onClick={onClose} className="px-4 py-2 bg-brand text-primary-foreground rounded text-sm font-medium hover:opacity-90">Done</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 
 /* ============ CHAT TAB ============ */
 function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
