@@ -60,15 +60,17 @@ function SettingsPage() {
   }, [user, loading, navigate]);
 
   const handleAiSave = async () => {
-    if (!aiKey.trim()) return toast.error("Please add a key first");
+    if (provider !== "gemini" && !aiKey.trim()) return toast.error("Please add a key first");
     setAiBusy(true); setAiState(null);
-    const t = await testAi({ data: { provider, apiKey: aiKey.trim() } });
-    if (!t.success) {
-      setAiBusy(false);
-      setAiState({ ok: false, msg: "That key didn't work — please double-check it" });
-      return;
+    if (provider !== "gemini") {
+      const t = await testAi({ data: { provider, apiKey: aiKey.trim() } });
+      if (!t.success) {
+        setAiBusy(false);
+        setAiState({ ok: false, msg: "That key didn't work — please double-check it" });
+        return;
+      }
     }
-    await saveAi({ data: { provider, apiKey: aiKey.trim() } });
+    await saveAi({ data: { provider, apiKey: provider === "gemini" ? "" : aiKey.trim() } });
     setAiBusy(false);
     setAiKey("");
     setAiState({ ok: true, msg: "Saved!" });
