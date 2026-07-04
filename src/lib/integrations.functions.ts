@@ -1283,7 +1283,7 @@ Return valid JSON only — no explanation, no markdown fences.`;
       }
     })();
 
-    await Promise.race([work, new Promise((r) => setTimeout(r, 1500))]);
+    await work;
 
     return { jobId: job.id as string, branch };
   });
