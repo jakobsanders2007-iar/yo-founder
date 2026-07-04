@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { Logo } from "@/components/Logo";
 import { saveAiKey, saveGithubToken } from "@/lib/yofounder.functions";
+import { startGithubOAuth } from "@/lib/integrations.functions";
 import { toast } from "sonner";
 import { ArrowLeft, Check, Eye, EyeOff, X, Github } from "lucide-react";
 
@@ -39,6 +40,16 @@ function SettingsPage() {
 
   const saveAi = useServerFn(saveAiKey);
   const saveGh = useServerFn(saveGithubToken);
+  const startGh = useServerFn(startGithubOAuth);
+
+  const connectGithubOAuth = async () => {
+    try {
+      const { url } = await startGh({ data: { origin: window.location.origin } });
+      window.location.href = url;
+    } catch (e: any) {
+      toast.error(e?.message ?? "Couldn't start GitHub connect");
+    }
+  };
 
   useEffect(() => {
     if (loading) return;
@@ -249,9 +260,19 @@ function SettingsPage() {
             </div>
           ) : (
             <div>
-              <p className="text-sm text-muted-foreground mb-3">
-                Paste a GitHub <a href="https://github.com/settings/tokens/new?scopes=repo,read:user&description=YoFounder" target="_blank" rel="noreferrer" className="text-brand underline">personal access token</a> with <code className="font-mono text-xs">repo</code> + <code className="font-mono text-xs">read:user</code> scopes.
+              <button
+                onClick={connectGithubOAuth}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-foreground text-background font-semibold px-5 py-2.5 rounded hover:opacity-90"
+              >
+                <Github className="h-4 w-4" /> Connect with GitHub
+              </button>
+              <p className="text-xs text-muted-foreground mt-2 mb-5">
+                Recommended — signs you in through GitHub in one click.
               </p>
+              <div className="border-t border-border pt-4 mt-2">
+                <p className="text-sm text-muted-foreground mb-3">
+                  Or paste a <a href="https://github.com/settings/tokens/new?scopes=repo,read:user&description=YoFounder" target="_blank" rel="noreferrer" className="text-brand underline">personal access token</a> with <code className="font-mono text-xs">repo</code> + <code className="font-mono text-xs">read:user</code> scopes.
+                </p>
               <label className="text-xs text-muted-foreground">GitHub personal access token</label>
               <div className="mt-1 relative">
                 <input
@@ -270,6 +291,7 @@ function SettingsPage() {
                 <span className="text-xs text-muted-foreground">Stored only when you use the final save button below.</span>
                 {ghState?.ok && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {ghState.msg}</span>}
                 {ghState && !ghState.ok && <span className="text-error text-sm flex items-center gap-1"><X className="h-4 w-4" /> {ghState.msg}</span>}
+              </div>
               </div>
             </div>
           )}
