@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth";
 import { Logo } from "@/components/Logo";
 import { Avatar } from "@/components/UserAvatar";
 import {
-  respondAsSenderAi, respondAsCofounderAi, generatePrompt, sendInvite,
+  respondAsSenderAi, respondAsCofounderAi, respondAsClaudeAi, respondAsGptAi, generatePrompt, sendInvite,
 } from "@/lib/yofounder.functions";
 import {
   runClaudeCode, getGithubPRDetail, getRepoTree, getRepoFile,
@@ -32,7 +32,7 @@ export const Route = createFileRoute("/workspaces/$id")({
 });
 
 type Tab = "chat" | "code" | "github" | "vercel" | "supabase" | "domain";
-const TAB_ORDER: Tab[] = ["chat", "code", "github", "vercel", "supabase", "domain"];
+const TAB_ORDER: Tab[] = ["chat", "code", "github", "supabase", "vercel", "domain"];
 
 const REACTION_EMOJIS = ["👍", "❤️", "🎉", "🚀", "😂", "👀"];
 
@@ -350,8 +350,8 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const respondSender = useServerFn(respondAsSenderAi);
-  const respondCofounder = useServerFn(respondAsCofounderAi);
+  const respondClaude = useServerFn(respondAsClaudeAi);
+  const respondGpt = useServerFn(respondAsGptAi);
   const genPrompt = useServerFn(generatePrompt);
 
   const membersById = useMemo(() => {
@@ -428,13 +428,20 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
 
       await supabase.channel(`ws-${workspaceId}`).send({
         type: "broadcast", event: "typing",
-        payload: { name: me?.display_name, provider: me?.ai_provider, color: me?.avatar_color },
+        payload: { name: "Claude", provider: "claude", color: "#6366f1" },
       });
 
-      respondSender({ data: { workspaceId } })
+      respondClaude({ data: { workspaceId } })
         .then((r: any) => { if (r && r.ok === false) setErrorBanner("Something went wrong — try sending your message again"); })
         .catch(() => setErrorBanner("Something went wrong — try sending your message again"));
-      respondCofounder({ data: { workspaceId } }).catch(() => {});
+
+      setTimeout(() => {
+        supabase.channel(`ws-${workspaceId}`).send({
+          type: "broadcast", event: "typing",
+          payload: { name: "ChatGPT", provider: "gpt", color: "#10b981" },
+        });
+        respondGpt({ data: { workspaceId } }).catch(() => {});
+      }, 1000);
     } catch (e: any) {
       setErrorBanner("Something went wrong — try sending your message again");
     } finally {
@@ -486,14 +493,18 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
         )}
         {messages.map((m) => {
           const sender = membersById[m.sender_user_id];
-          const color = sender?.avatar_color ?? "#666";
-          const name = sender?.display_name ?? "?";
+          const color = sender?.avatar_color ?? (m.ai_provider === "claude" ? "#6366f1" : m.ai_provider === "gpt" ? "#10b981" : "#666");
+          const name = sender?.display_name ?? (m.ai_provider === "claude" ? "Claude" : m.ai_provider === "gpt" ? "ChatGPT" : "?");
           const isAi = m.sender_type === "ai";
           const isMine = !isAi && m.sender_user_id === user.id;
           const borderColor = m.ai_provider === "claude" ? "#6366f1" : m.ai_provider === "gpt" ? "#10b981" : m.ai_provider === "gemini" ? "#4285F4" : "transparent";
           const providerName = m.ai_provider === "claude" ? "Claude" : m.ai_provider === "gpt" ? "ChatGPT" : m.ai_provider === "gemini" ? "Gemini" : "AI";
-          const label = isAi ? `${name}'s ${providerName}` : name;
+          const label = isAi ? providerName : name;
           const msgReactions = reactions[m.id] ?? [];
+          const hasFinalPrompt = m.content.includes("FINAL PROMPT:");
+          const promptMatch = m.content.match(/FINAL PROMPT:\s*\n([\s\S]*?)(?:\n\n|$)/);
+          const promptText = promptMatch ? promptMatch[1] : "";
+
           return (
             <div key={m.id} className="flex gap-3 group">
               <Avatar name={name} color={color} size="sm" />
@@ -504,16 +515,39 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
                     {new Date(m.created_at).toLocaleTimeString()}
                   </span>
                 </div>
-                <div
-                  className={cn(
-                    "mt-1 text-sm whitespace-pre-wrap leading-relaxed",
-                    isAi ? "font-mono pl-3 border-l-2" : "",
-                    m.is_error ? "text-error" : ""
-                  )}
-                  style={isAi ? { borderColor } : undefined}
-                >
-                  {renderWithMentions(m.content, memberNames)}
-                </div>
+                {hasFinalPrompt ? (
+                  <div className="mt-3 space-y-2">
+                    <div className="text-sm whitespace-pre-wrap leading-relaxed pl-3 border-l-2" style={{ borderColor }}>
+                      {renderWithMentions(m.content.split("FINAL PROMPT:")[0], memberNames)}
+                    </div>
+                    <div className="bg-brand/10 border border-brand/40 rounded p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-semibold text-brand">FINAL PROMPT</span>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(promptText.trim());
+                            toast.success("Copied to clipboard");
+                          }}
+                          title="Copy to Claude Code"
+                          className="text-xs px-2.5 py-1 rounded bg-brand text-primary-foreground hover:opacity-90 inline-flex items-center gap-1.5">
+                          <Copy className="h-3 w-3" /> Copy to Claude Code
+                        </button>
+                      </div>
+                      <pre className="text-xs font-mono whitespace-pre-wrap overflow-hidden text-muted-foreground">{promptText.trim()}</pre>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className={cn(
+                      "mt-1 text-sm whitespace-pre-wrap leading-relaxed",
+                      isAi ? "font-mono pl-3 border-l-2" : "",
+                      m.is_error ? "text-error" : ""
+                    )}
+                    style={isAi ? { borderColor } : undefined}
+                  >
+                    {renderWithMentions(m.content, memberNames)}
+                  </div>
+                )}
                 <MessageReactionsBar
                   messageId={m.id}
                   userId={user.id}
@@ -1585,71 +1619,74 @@ function Modal({ onClose, title, children }: { onClose: () => void; title: strin
 
 /* ---------- UI Mockup pane (AI-generated HTML preview) ---------- */
 function UiPreviewPane({ prompt }: { prompt: any }) {
-  const [busy, setBusy] = useState(false);
-  const [html, setHtml] = useState<string | null>(prompt?.ui_preview_html ?? null);
-  const genFn = useServerFn(generateUiPreview);
+  const [loading, setLoading] = useState(false);
+  const [building, setBuilding] = useState(false);
+  const refreshFn = useServerFn(generateUiPreview);
 
-  useEffect(() => {
-    setHtml(prompt?.ui_preview_html ?? null);
-  }, [prompt?.id, prompt?.ui_preview_html]);
-
-  const generate = async () => {
+  const refresh = async () => {
     if (!prompt?.id) return toast.error("Pick or write a prompt first");
-    setBusy(true);
+    setLoading(true);
     try {
-      const r = await genFn({ data: { promptId: prompt.id } });
-      setHtml(r.html);
-      toast.success("UI mockup ready");
+      const r = await refreshFn({ data: { promptId: prompt.id } });
+      if (r.building) {
+        setBuilding(true);
+        toast.message("Still building — checking again in a moment");
+      } else if (r.previewUrl) {
+        setBuilding(false);
+        toast.success("Preview ready!");
+      } else {
+        setBuilding(false);
+        toast.message("No preview yet — make sure the PR is approved and deployed");
+      }
     } catch (e: any) {
-      toast.error(e?.message ?? "Couldn't generate the mockup");
+      toast.error(e?.message ?? "Couldn't refresh preview");
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
-  };
-
-  const openInNewTab = () => {
-    if (!html) return;
-    const blob = new Blob([html], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    window.open(url, "_blank", "noopener,noreferrer");
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
 
   if (!prompt) {
     return (
       <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-        Write or select a prompt to generate a UI mockup.
+        Write or select a prompt to see a Vercel preview.
       </div>
     );
   }
+
+  const hasPreview = !!prompt.vercel_preview_url;
 
   return (
     <div className="h-full flex flex-col bg-[#0a0a0a]">
       <div className="flex items-center justify-between gap-2 px-4 py-2 border-b border-[#1e1e1e]">
         <div className="text-xs text-muted-foreground truncate">
-          AI-generated visual mockup for: <span className="text-foreground/90">{prompt.title}</span>
+          Vercel deployment preview for: <span className="text-foreground/90">{prompt.title}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={generate} disabled={busy}
-            className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded bg-amber-500 text-background font-medium hover:opacity-90 disabled:opacity-50">
-            <Sparkles className="h-3.5 w-3.5" />
-            {busy ? "Generating..." : html ? "Regenerate" : "Generate UI mockup"}
-          </button>
-          {html && (
-            <button onClick={openInNewTab}
-              className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-[#1e1e1e] text-foreground/90 hover:border-foreground">
-              <ExternalLink className="h-3.5 w-3.5" /> Open in new tab
-            </button>
-          )}
-        </div>
+        <button onClick={refresh} disabled={loading}
+          className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-[#1e1e1e] text-foreground/90 hover:border-foreground disabled:opacity-50">
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+          {loading ? "Checking..." : "Refresh"}
+        </button>
       </div>
       <div className="flex-1 min-h-0 bg-white">
-        {html ? (
-          <iframe srcDoc={html} title="UI mockup" className="w-full h-full border-0"
-            sandbox="allow-scripts allow-same-origin allow-forms" />
+        {hasPreview ? (
+          <iframe src={prompt.vercel_preview_url} title="Vercel preview" className="w-full h-full border-0" />
         ) : (
-          <div className="h-full flex items-center justify-center text-sm text-muted-foreground bg-[#0a0a0a]">
-            {busy ? "Designing your mockup..." : "Click \"Generate UI mockup\" to visualize this prompt before building."}
+          <div className="h-full flex items-center justify-center flex-col gap-3 text-sm text-muted-foreground bg-[#0a0a0a] px-4 text-center max-w-md">
+            {building ? (
+              <>
+                <Loader2 className="h-6 w-6 animate-spin text-brand" />
+                <p>Building your preview — usually takes under a minute after approving.</p>
+              </>
+            ) : (
+              <>
+                <Eye className="h-6 w-6" />
+                <p>Preview will appear here once Vercel finishes building — usually under a minute after approving.</p>
+                <button onClick={refresh}
+                  className="text-xs px-3 py-1.5 rounded bg-foreground/10 hover:bg-foreground/20 text-foreground">
+                  Check again
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>

@@ -580,3 +580,243 @@ function escapeHtml(s: string) {
   return s.replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c] as string));
 }
 
+// ---------- Multi-AI Group Chat (Claude and ChatGPT) ----------
+async function respondAsGroupAiMember(opts: {
+  supabase: any;
+  workspaceId: string;
+  aiName: "claude" | "gpt";
+  systemPrompt: string;
+}) {
+  const { supabase, workspaceId, aiName, systemPrompt } = opts;
+  const history = await fetchHistory(supabase, workspaceId);
+  const formatted = buildHistoryForGroupChat(history);
+
+  let text: string;
+  let provider: Provider;
+  let apiKey: string;
+
+  if (aiName === "claude") {
+    const key = process.env.ANTHROPIC_API_KEY;
+    if (!key) {
+      await supabaseAdmin.from("messages").insert({
+        workspace_id: workspaceId,
+        sender_user_id: "00000000-0000-0000-0000-000000000001",
+        sender_type: "ai",
+        ai_provider: "claude",
+        content: "Claude is not configured on this server.",
+        is_error: true,
+      });
+      return { ok: false, error: "Claude API key not configured" };
+    }
+    provider = "claude";
+    apiKey = key;
+  } else {
+    const key = process.env.OPENAI_API_KEY;
+    if (!key) {
+      await supabaseAdmin.from("messages").insert({
+        workspace_id: workspaceId,
+        sender_user_id: "00000000-0000-0000-0000-000000000002",
+        sender_type: "ai",
+        ai_provider: "gpt",
+        content: "ChatGPT is not configured on this server.",
+        is_error: true,
+      });
+      return { ok: false, error: "OpenAI API key not configured" };
+    }
+    provider = "gpt";
+    apiKey = key;
+  }
+
+  try {
+    text = await callProvider(provider, apiKey, systemPrompt, formatted, CHAT_TOKENS);
+  } catch (e: any) {
+    const userId = aiName === "claude" ? "00000000-0000-0000-0000-000000000001" : "00000000-0000-0000-0000-000000000002";
+    await supabaseAdmin.from("messages").insert({
+      workspace_id: workspaceId,
+      sender_user_id: userId,
+      sender_type: "ai",
+      ai_provider: provider,
+      content: "Something went wrong — try sending your message again.",
+      is_error: true,
+    });
+    return { ok: false, error: e?.message ?? "Unknown error" };
+  }
+
+  const userId = aiName === "claude" ? "00000000-0000-0000-0000-000000000001" : "00000000-0000-0000-0000-000000000002";
+  await supabaseAdmin.from("messages").insert({
+    workspace_id: workspaceId,
+    sender_user_id: userId,
+    sender_type: "ai",
+    ai_provider: provider,
+    content: text.trim(),
+  });
+  return { ok: true };
+}
+
+function buildHistoryForGroupChat(messages: any[]): ChatMsg[] {
+  const result: ChatMsg[] = [];
+  for (const m of messages.slice(-30)) {
+    const role = m.sender_type === "human" ? "user" : "assistant";
+    const name = m.profiles?.display_name || (m.ai_provider === "claude" ? "Claude" : m.ai_provider === "gpt" ? "ChatGPT" : "AI");
+    const label = m.sender_type === "ai" ? name : name;
+    result.push({ role, content: `${label}: ${m.content}` });
+  }
+  return result;
+}
+
+export const respondAsClaudeAi = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ workspaceId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context as any;
+    const { data: isMember } = await supabase.rpc("is_workspace_member", { _workspace_id: data.workspaceId });
+    if (!isMember) throw new Error("Not a member");
+
+    const { data: ws } = await supabase
+      .from("workspaces")
+      .select("github_repo, name")
+      .eq("id", data.workspaceId)
+      .single();
+
+    const systemPrompt = `You are Claude, an AI engineer in a group workspace chat on YoFounder. Your teammate is ChatGPT. You two argue constantly but you're actually best friends who respect each other deeply.
+
+Your ONLY job in this chat is to help produce the single best Claude Code prompt the user can paste directly into the Claude Code CLI. You know the user's full stack: Supabase (database + auth + realtime), Vercel (deployments + previews + env vars), GitHub (repos + PRs + branches), GoDaddy (DNS + domains), and Claude Code (the CLI they use to implement everything). They use nothing else.
+
+Context: Working with GitHub repo "${ws?.github_repo || "not connected"}" on the "${ws?.name || "workspace"}" project.
+
+When the user describes something they want to build or fix:
+1. Form your own strong opinion on the best approach
+2. Challenge ChatGPT's approach if you disagree — be direct, even blunt
+3. Eventually converge on one master prompt together
+4. When you both agree, output the final prompt clearly marked as FINAL PROMPT:
+
+Keep responses conversational and under 6 sentences unless you're outputting the final prompt. Never use bullet points or headers in regular chat — save structure for the final prompt itself.`;
+
+    return respondAsGroupAiMember({ supabase, workspaceId: data.workspaceId, aiName: "claude", systemPrompt });
+  });
+
+export const respondAsGptAi = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ workspaceId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context as any;
+    const { data: isMember } = await supabase.rpc("is_workspace_member", { _workspace_id: data.workspaceId });
+    if (!isMember) throw new Error("Not a member");
+
+    const { data: ws } = await supabase
+      .from("workspaces")
+      .select("github_repo, name")
+      .eq("id", data.workspaceId)
+      .single();
+
+    const systemPrompt = `You are ChatGPT, an AI engineer in a group workspace chat on YoFounder. Your teammate is Claude. You two argue constantly but you're actually best friends who genuinely respect each other.
+
+Your ONLY job is to help produce the single best Claude Code prompt the user can paste directly into the Claude Code CLI. You know the user's full stack: Supabase (database + auth + realtime), Vercel (deployments + previews + env vars), GitHub (repos + PRs + branches), GoDaddy (DNS + domains), and Claude Code (the CLI they use to implement everything). They use nothing else.
+
+Context: Working with GitHub repo "${ws?.github_repo || "not connected"}" on the "${ws?.name || "workspace"}" project.
+
+When the user describes something they want to build or fix:
+1. Form your own strong opinion on the best approach
+2. Push back on Claude if you disagree — don't just agree to agree
+3. Eventually converge on one master prompt together
+4. When you both agree, output the final prompt clearly marked as FINAL PROMPT:
+
+Keep responses conversational and under 6 sentences unless outputting the final prompt. Never use bullets or headers in regular chat.`;
+
+    return respondAsGroupAiMember({ supabase, workspaceId: data.workspaceId, aiName: "gpt", systemPrompt });
+  });
+
+// ---------- Custom AI Management (BYOM) ----------
+export const addCustomAi = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({
+      workspaceId: z.string().uuid(),
+      providerName: z.string().min(1).max(100),
+      model: z.string().min(1).max(200),
+      apiKey: z.string().min(1).max(2000),
+      endpointUrl: z.string().url().max(500).optional(),
+    }).parse(input)
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+    const { data: isMember } = await supabase.rpc("is_workspace_member", { _workspace_id: data.workspaceId });
+    if (!isMember) throw new Error("Not a member");
+
+    const { data: ai, error: aiErr } = await supabase
+      .from("custom_ai_members")
+      .insert({
+        workspace_id: data.workspaceId,
+        added_by: userId,
+        provider_name: data.providerName,
+        model: data.model,
+        endpoint_url: data.endpointUrl || null,
+      })
+      .select()
+      .single();
+    if (aiErr || !ai) throw new Error(aiErr?.message ?? "Failed to add AI");
+
+    // Store API key in workspace_secrets
+    const { data: secrets } = await supabase
+      .from("workspace_secrets")
+      .select("custom_ai_keys")
+      .eq("workspace_id", data.workspaceId)
+      .single();
+    const currentKeys = (secrets?.custom_ai_keys ?? {}) as Record<string, string>;
+    currentKeys[ai.id] = data.apiKey;
+
+    await supabaseAdmin.from("workspace_secrets").update({ custom_ai_keys: currentKeys }).eq("workspace_id", data.workspaceId);
+
+    return { ok: true, aiId: ai.id, providerName: ai.provider_name };
+  });
+
+export const removeCustomAi = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({
+      workspaceId: z.string().uuid(),
+      customAiId: z.string().uuid(),
+    }).parse(input)
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase } = context as any;
+    const { data: isMember } = await supabase.rpc("is_workspace_owner", { _workspace_id: data.workspaceId });
+    if (!isMember) throw new Error("Must be workspace owner");
+
+    const { error } = await supabase
+      .from("custom_ai_members")
+      .delete()
+      .eq("id", data.customAiId)
+      .eq("workspace_id", data.workspaceId);
+    if (error) throw new Error(error.message);
+
+    // Remove API key from workspace_secrets
+    const { data: secrets } = await supabase
+      .from("workspace_secrets")
+      .select("custom_ai_keys")
+      .eq("workspace_id", data.workspaceId)
+      .single();
+    const currentKeys = (secrets?.custom_ai_keys ?? {}) as Record<string, string>;
+    delete currentKeys[data.customAiId];
+
+    await supabaseAdmin.from("workspace_secrets").update({ custom_ai_keys: currentKeys }).eq("workspace_id", data.workspaceId);
+
+    return { ok: true };
+  });
+
+export const listCustomAis = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ workspaceId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context as any;
+    const { data: isMember } = await supabase.rpc("is_workspace_member", { _workspace_id: data.workspaceId });
+    if (!isMember) throw new Error("Not a member");
+
+    const { data: ais } = await supabase
+      .from("custom_ai_members")
+      .select("id, provider_name, model, endpoint_url, created_at")
+      .eq("workspace_id", data.workspaceId);
+
+    return { ais: ais ?? [] };
+  });
+
