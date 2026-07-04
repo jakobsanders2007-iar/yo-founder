@@ -28,7 +28,7 @@ function SupabaseCallback() {
         const res = await complete({ data: { code, state, origin: window.location.origin } });
         setStatus("ok");
         setWsId(res.workspaceId);
-        setTimeout(() => navigate({ to: "/workspaces/$id", params: { id: res.workspaceId }, search: { tab: "supabase" } as any }), 1000);
+        setTimeout(() => navigate({ to: "/workspaces/$id", params: { id: res.workspaceId } }), 1000);
       } catch (e: any) {
         setStatus("err");
         setMsg(e?.message ?? "Supabase connection failed");
