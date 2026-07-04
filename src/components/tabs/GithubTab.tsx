@@ -13,8 +13,10 @@ import {
   getGithubCommits,
   mergeGithubPR,
   listGithubRepoFiles,
+  startGithubOAuth,
 } from "@/lib/integrations.functions";
 import { saveGithubToken } from "@/lib/yofounder.functions";
+
 import { useAuth } from "@/lib/auth";
 
 type Repo = { full_name: string; private: boolean; updated_at: string; description: string | null };
