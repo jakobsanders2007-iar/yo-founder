@@ -13,9 +13,9 @@ async function getWorkspaceSecrets(supabase: any, workspaceId: string) {
   await assertWorkspaceAccess(supabase, workspaceId);
   const { data } = await supabaseAdmin
     .from("workspace_secrets")
-    .select("vercel_token, supabase_service_key, supabase_url")
+    .select("vercel_token, vercel_project_id, vercel_project_name, supabase_service_key, supabase_url")
     .eq("workspace_id", workspaceId).maybeSingle();
-  return data ?? { vercel_token: null, supabase_service_key: null, supabase_url: null };
+  return data ?? { vercel_token: null, vercel_project_id: null, vercel_project_name: null, supabase_service_key: null, supabase_url: null };
 }
 async function upsertWorkspaceSecrets(workspaceId: string, patch: Record<string, any>) {
   const { error } = await supabaseAdmin
@@ -154,19 +154,23 @@ export const saveVercelConnection = createServerFn({ method: "POST" })
       token: z.string().min(10).max(500),
       projectId: z.string().min(1).max(200),
       projectName: z.string().min(1).max(200),
+      projectUrl: z.string().url().optional(),
     }).parse(input)
   )
   .handler(async ({ data, context }) => {
     const { supabase } = context as any;
-    const { error } = await supabase
-      .from("workspaces")
-      .update({
-        vercel_token: data.token,
-        vercel_project_id: data.projectId,
-        vercel_project_name: data.projectName,
-      })
-      .eq("id", data.workspaceId);
-    if (error) throw new Error(error.message);
+    await assertWorkspaceAccess(supabase, data.workspaceId);
+    await upsertWorkspaceSecrets(data.workspaceId, {
+      vercel_token: data.token,
+      vercel_project_id: data.projectId,
+      vercel_project_name: data.projectName,
+    });
+    if (data.projectUrl) {
+      await supabase
+        .from("workspaces")
+        .update({ vercel_project_url: data.projectUrl })
+        .eq("id", data.workspaceId);
+    }
     return { ok: true };
   });
 
@@ -177,11 +181,11 @@ export const getVercelDeployments = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase } = context as any;
-    const ws = await getWorkspace(supabase, data.workspaceId);
-    if (!ws.vercel_token || !ws.vercel_project_id) throw new Error("Vercel not connected");
+    const secrets = await getWorkspaceSecrets(supabase, data.workspaceId);
+    if (!secrets.vercel_token || !secrets.vercel_project_id) throw new Error("Vercel not connected");
     const j = await vercelGet(
-      ws.vercel_token,
-      `/v6/deployments?projectId=${encodeURIComponent(ws.vercel_project_id)}&limit=10`
+      secrets.vercel_token,
+      `/v6/deployments?projectId=${encodeURIComponent(secrets.vercel_project_id)}&limit=10`
     );
     return {
       deployments: (j.deployments ?? []).map((d: any) => ({
@@ -205,17 +209,16 @@ export const triggerVercelDeploy = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase } = context as any;
-    const ws = await getWorkspace(supabase, data.workspaceId);
-    if (!ws.vercel_token || !ws.vercel_project_id) throw new Error("Vercel not connected");
-    // Get most recent deployment to redeploy from
+    const secrets = await getWorkspaceSecrets(supabase, data.workspaceId);
+    if (!secrets.vercel_token || !secrets.vercel_project_id) throw new Error("Vercel not connected");
     const list = await vercelGet(
-      ws.vercel_token,
-      `/v6/deployments?projectId=${encodeURIComponent(ws.vercel_project_id)}&limit=1&target=production`
+      secrets.vercel_token,
+      `/v6/deployments?projectId=${encodeURIComponent(secrets.vercel_project_id)}&limit=1&target=production`
     );
     const latest = list.deployments?.[0];
     if (!latest) throw new Error("No previous deployment to redeploy");
-    const j = await vercelPost(ws.vercel_token, `/v13/deployments`, {
-      name: ws.vercel_project_name,
+    const j = await vercelPost(secrets.vercel_token, `/v13/deployments`, {
+      name: secrets.vercel_project_name,
       deploymentId: latest.uid,
       target: "production",
     });
@@ -232,11 +235,11 @@ export const getVercelBuildLogs = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase } = context as any;
-    const ws = await getWorkspace(supabase, data.workspaceId);
-    if (!ws.vercel_token) throw new Error("Vercel not connected");
+    const secrets = await getWorkspaceSecrets(supabase, data.workspaceId);
+    if (!secrets.vercel_token) throw new Error("Vercel not connected");
     const res = await fetchWithTimeout(
       `https://api.vercel.com/v2/deployments/${encodeURIComponent(data.deploymentId)}/events`,
-      { headers: { Authorization: `Bearer ${ws.vercel_token}` } }
+      { headers: { Authorization: `Bearer ${secrets.vercel_token}` } }
     );
     if (!res.ok) throw new Error(`Vercel logs ${res.status}`);
     const events = await res.json();
@@ -258,11 +261,11 @@ export const getVercelEnvVars = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase } = context as any;
-    const ws = await getWorkspace(supabase, data.workspaceId);
-    if (!ws.vercel_token || !ws.vercel_project_id) throw new Error("Vercel not connected");
+    const secrets = await getWorkspaceSecrets(supabase, data.workspaceId);
+    if (!secrets.vercel_token || !secrets.vercel_project_id) throw new Error("Vercel not connected");
     const j = await vercelGet(
-      ws.vercel_token,
-      `/v9/projects/${encodeURIComponent(ws.vercel_project_id)}/env`
+      secrets.vercel_token,
+      `/v9/projects/${encodeURIComponent(secrets.vercel_project_id)}/env`
     );
     return {
       envs: (j.envs ?? []).map((e: any) => ({
@@ -286,11 +289,11 @@ export const addVercelEnvVar = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase } = context as any;
-    const ws = await getWorkspace(supabase, data.workspaceId);
-    if (!ws.vercel_token || !ws.vercel_project_id) throw new Error("Vercel not connected");
+    const secrets = await getWorkspaceSecrets(supabase, data.workspaceId);
+    if (!secrets.vercel_token || !secrets.vercel_project_id) throw new Error("Vercel not connected");
     await vercelPost(
-      ws.vercel_token,
-      `/v10/projects/${encodeURIComponent(ws.vercel_project_id)}/env`,
+      secrets.vercel_token,
+      `/v10/projects/${encodeURIComponent(secrets.vercel_project_id)}/env`,
       { key: data.key, value: data.value, target: data.target, type: "encrypted" }
     );
     return { ok: true };
@@ -306,80 +309,13 @@ export const deleteVercelEnvVar = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase } = context as any;
-    const ws = await getWorkspace(supabase, data.workspaceId);
-    if (!ws.vercel_token || !ws.vercel_project_id) throw new Error("Vercel not connected");
+    const secrets = await getWorkspaceSecrets(supabase, data.workspaceId);
+    if (!secrets.vercel_token || !secrets.vercel_project_id) throw new Error("Vercel not connected");
     await vercelDelete(
-      ws.vercel_token,
-      `/v9/projects/${encodeURIComponent(ws.vercel_project_id)}/env/${encodeURIComponent(data.envId)}`
+      secrets.vercel_token,
+      `/v9/projects/${encodeURIComponent(secrets.vercel_project_id)}/env/${encodeURIComponent(data.envId)}`
     );
     return { ok: true };
-  });
-
-/* =====================================================
-   VERCEL OAUTH (server-side code exchange)
-   ===================================================== */
-
-export const startVercelOAuth = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((input) =>
-    z.object({ workspaceId: z.string().uuid(), origin: z.string().url().max(300) }).parse(input)
-  )
-  .handler(async ({ data, context }) => {
-    const { userId, supabase } = context as any;
-    await assertWorkspaceAccess(supabase, data.workspaceId);
-    const clientId = process.env.VERCEL_OAUTH_CLIENT_ID;
-    if (!clientId) throw new Error("Vercel OAuth not configured (missing VERCEL_OAUTH_CLIENT_ID)");
-    const state = `${userId}:${data.workspaceId}:${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
-    const redirectUri = `${data.origin.replace(/\/$/, "")}/auth/vercel/callback`;
-    const url = new URL("https://vercel.com/oauth/authorize");
-    url.searchParams.set("client_id", clientId);
-    url.searchParams.set("redirect_uri", redirectUri);
-    url.searchParams.set("response_type", "code");
-    url.searchParams.set("state", state);
-    return { url: url.toString(), state };
-  });
-
-export const completeVercelOAuth = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((input) =>
-    z.object({
-      code: z.string().min(5).max(500),
-      state: z.string().min(5).max(500),
-      origin: z.string().url().max(300),
-    }).parse(input)
-  )
-  .handler(async ({ data, context }) => {
-    const { userId, supabase } = context as any;
-    const parts = data.state.split(":");
-    if (parts[0] !== userId || parts.length < 3) throw new Error("Invalid OAuth state");
-    const workspaceId = parts[1];
-    await assertWorkspaceAccess(supabase, workspaceId);
-
-    const clientId = process.env.VERCEL_OAUTH_CLIENT_ID;
-    const clientSecret = process.env.VERCEL_OAUTH_CLIENT_SECRET;
-    if (!clientId || !clientSecret) throw new Error("Vercel OAuth not configured");
-    const redirectUri = `${data.origin.replace(/\/$/, "")}/auth/vercel/callback`;
-
-    const body = new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      code: data.code,
-      redirect_uri: redirectUri,
-    });
-    const tokenRes = await fetchWithTimeout("https://api.vercel.com/v2/oauth/access_token", {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: body.toString(),
-    });
-    if (!tokenRes.ok) throw new Error(`Token exchange failed: ${(await tokenRes.text()).slice(0, 200)}`);
-    const tj: any = await tokenRes.json();
-    const accessToken: string = tj.access_token;
-    if (!accessToken) throw new Error("No access_token returned");
-
-    await upsertWorkspaceSecrets(workspaceId, {
-      vercel_token: accessToken,
-    });
-    return { ok: true, workspaceId };
   });
 
 /* =====================================================
@@ -1471,10 +1407,11 @@ export const approveAndPushPR = createServerFn({ method: "POST" })
     // Try to fetch a fresh Vercel preview URL (non-blocking — best effort)
     let previewUrl: string | null = null;
     try {
-      if (ws.vercel_token && ws.vercel_project_id) {
+      const secrets = await getWorkspaceSecrets(supabase, data.workspaceId);
+      if (secrets.vercel_token && secrets.vercel_project_id) {
         const vj = await vercelGet(
-          ws.vercel_token,
-          `/v6/deployments?projectId=${encodeURIComponent(ws.vercel_project_id)}&limit=1`
+          secrets.vercel_token,
+          `/v6/deployments?projectId=${encodeURIComponent(secrets.vercel_project_id)}&limit=1`
         );
         const d = vj.deployments?.[0];
         if (d?.url) previewUrl = `https://${d.url}`;
@@ -1504,13 +1441,13 @@ export const fetchVercelPreview = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase } = context as any;
-    const ws = await getWorkspace(supabase, data.workspaceId);
-    if (!ws.vercel_token || !ws.vercel_project_id) {
+    const secrets = await getWorkspaceSecrets(supabase, data.workspaceId);
+    if (!secrets.vercel_token || !secrets.vercel_project_id) {
       return { url: null as string | null, configured: false };
     }
     const j = await vercelGet(
-      ws.vercel_token,
-      `/v6/deployments?projectId=${encodeURIComponent(ws.vercel_project_id)}&limit=1`
+      secrets.vercel_token,
+      `/v6/deployments?projectId=${encodeURIComponent(secrets.vercel_project_id)}&limit=1`
     );
     const d = j.deployments?.[0];
     const url = d?.url ? `https://${d.url}` : null;

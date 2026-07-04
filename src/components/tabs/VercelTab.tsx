@@ -12,7 +12,6 @@ import {
   triggerVercelDeploy,
   listVercelProjects,
   saveVercelConnection,
-  startVercelOAuth,
 } from "@/lib/integrations.functions";
 
 type SubTab = "deployments" | "logs" | "env";
@@ -22,10 +21,6 @@ export function VercelTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void 
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  // OAuth flow
-  const startOAuth = useServerFn(startVercelOAuth);
-  const [oauthBusy, setOAuthBusy] = useState(false);
-
   // Token + project-picker flow
   const listProjects = useServerFn(listVercelProjects);
   const saveConn = useServerFn(saveVercelConnection);
@@ -33,7 +28,6 @@ export function VercelTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void 
   const [showToken, setShowToken] = useState(false);
   const [projects, setProjects] = useState<any[] | null>(null);
   const [loadingProjects, setLoadingProjects] = useState(false);
-  const [showManual, setShowManual] = useState(false);
 
   const save = async () => {
     const v = url.trim();
@@ -50,23 +44,12 @@ export function VercelTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void 
     onWsUpdate();
   };
 
-  const connectVercel = async () => {
-    setOAuthBusy(true);
-    try {
-      const { url } = await startOAuth({ data: { workspaceId: ws.id, origin: window.location.origin } });
-      window.location.href = url;
-    } catch (e: any) {
-      toast.error(e?.message ?? "Couldn't start Vercel connect");
-      setOAuthBusy(false);
-    }
-  };
-
   const loadProjects = async () => {
-    const tkn = token.trim() || (ws.vercel_token ? "from-oauth" : "");
+    const tkn = token.trim();
     if (!tkn) return toast.error("Paste a Vercel token first");
     setLoadingProjects(true);
     try {
-      const r = await listProjects({ data: { workspaceId: ws.id, token: token.trim() || undefined } });
+      const r = await listProjects({ data: { workspaceId: ws.id, token: tkn } });
       setProjects(r.projects);
       if (!r.projects.length) toast.message("No projects found on this Vercel account");
     } catch (e: any) {
@@ -79,15 +62,10 @@ export function VercelTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void 
   const pickProject = async (p: { id: string; name: string }) => {
     setBusy(true);
     try {
-      const tkn = token.trim() || ws.vercel_token || "";
+      const tkn = token.trim();
       if (!tkn) return toast.error("No token available");
-      await saveConn({ data: { workspaceId: ws.id, token: tkn, projectId: p.id, projectName: p.name } });
-      // Also set a default URL if none saved yet
-      if (!ws.vercel_project_url) {
-        await supabase.from("workspaces")
-          .update({ vercel_project_url: `https://${p.name}.vercel.app` })
-          .eq("id", ws.id);
-      }
+      const projectUrl = `https://${p.name}.vercel.app`;
+      await saveConn({ data: { workspaceId: ws.id, token: tkn, projectId: p.id, projectName: p.name, projectUrl } });
       toast.success(`Connected to ${p.name} ✓`);
       setToken("");
       setProjects(null);
@@ -99,93 +77,106 @@ export function VercelTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void 
     }
   };
 
-  const hasVercelConnection = !!ws.vercel_token && !!ws.vercel_project_id;
-
-  // Has token but no project selected
-  if (ws.vercel_token && !hasVercelConnection) {
+  // Has token but no project selected - show project picker
+  if (token && projects) {
     return (
       <div className="p-6 max-w-3xl space-y-4">
         <div className="bg-surface border border-border rounded-lg p-6">
           <div className="inline-flex items-center gap-1.5 text-xs text-success mb-2">
-            <Check className="h-3.5 w-3.5" /> Authorized with Vercel
+            <Check className="h-3.5 w-3.5" /> Token authenticated
           </div>
-          <h2 className="text-lg font-semibold">Pick a project</h2>
-          <p className="text-sm text-muted-foreground mt-1 mb-4">Choose which Vercel project this workspace should use.</p>
-          {!projects ? (
-            <button onClick={loadProjects} disabled={loadingProjects} className="bg-brand text-primary-foreground px-4 py-2 rounded text-sm font-medium disabled:opacity-50">
-              {loadingProjects ? "Loading…" : "Load my projects"}
-            </button>
-          ) : (
-            <ProjectPicker projects={projects} busy={busy} onPick={pickProject} />
-          )}
+          <h2 className="text-lg font-semibold">Select a project</h2>
+          <p className="text-sm text-muted-foreground mt-1 mb-4">Choose which Vercel project this workspace should mirror.</p>
+          <ProjectPicker projects={projects} busy={busy} onPick={pickProject} />
         </div>
       </div>
     );
   }
 
-  // Not connected (no token and no API connection)
-  if (!ws.vercel_token && !hasVercelConnection) {
-    return (
-      <div className="p-6 max-w-2xl mx-auto">
-        <div className="bg-surface border border-border rounded-lg p-10 text-center">
-          <div className="mx-auto h-20 w-20 rounded-full bg-foreground/5 flex items-center justify-center mb-5">
-            <Rocket className="h-10 w-10" />
-          </div>
-          <h2 className="text-xl font-semibold">Connect Vercel</h2>
-          <p className="text-sm text-muted-foreground mt-2 max-w-sm mx-auto">
-            Authorize once and we'll list your projects automatically — no copy/paste needed.
+  // Not connected - show token paste interface
+  return (
+    <div className="p-6 max-w-2xl mx-auto">
+      <div className="bg-surface border border-border rounded-lg p-8 space-y-6">
+        <div>
+          <h2 className="text-xl font-semibold mb-2">Connect Vercel</h2>
+          <p className="text-sm text-muted-foreground">
+            Add your Vercel token to see deployments, build logs, and manage environment variables.
           </p>
-          <button
-            onClick={connectVercel}
-            disabled={oauthBusy}
-            className="mt-6 bg-brand text-primary-foreground font-semibold px-6 py-3 rounded-lg text-base hover:opacity-90 disabled:opacity-50 inline-flex items-center justify-center gap-2"
-          >
-            <Rocket className="h-5 w-5" />
-            {oauthBusy ? "Connecting..." : "Connect with Vercel"}
-          </button>
+        </div>
 
-          <div className="mt-8 pt-6 border-t border-border text-left">
-            {!showManual ? (
-              <button
-                onClick={() => setShowManual(true)}
-                className="text-xs text-muted-foreground hover:text-foreground underline"
+        <div className="space-y-4">
+          <div>
+            <label className="text-sm font-medium block mb-2">
+              Your Vercel token
+            </label>
+            <div className="flex gap-2">
+              <a
+                href="https://vercel.com/account/tokens"
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-brand hover:underline inline-flex items-center gap-1"
               >
-                Or paste your app URL manually
+                Get your token → <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="relative">
+              <input
+                type={showToken ? "text" : "password"}
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder="vercel_xxxxxxxxxxxxxx"
+                className="w-full bg-background border border-border rounded px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-brand pr-10"
+              />
+              <button
+                onClick={() => setShowToken(!showToken)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                title={showToken ? "Hide token" : "Show token"}
+              >
+                {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
-            ) : (
-              <>
-                <label className="text-xs text-muted-foreground">Your app URL (simple option — no deployments/logs)</label>
-                <input
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  placeholder="https://my-app.vercel.app"
-                  className="mt-1 w-full bg-background border border-border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand"
-                />
-                <div className="mt-3 flex gap-2">
-                  <button
-                    onClick={save}
-                    disabled={busy || !url.trim()}
-                    className="bg-foreground/10 hover:bg-foreground/20 px-4 py-2 rounded text-sm font-medium disabled:opacity-50"
-                  >
-                    {busy ? "Saving..." : "Save my app URL"}
-                  </button>
-                  <button
-                    onClick={() => { setShowManual(false); setUrl(ws.vercel_project_url ?? ""); }}
-                    className="px-4 py-2 border border-border rounded text-sm hover:border-foreground"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </>
-            )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              We'll store this securely in your workspace secrets, never show it in the UI.
+            </p>
+          </div>
+
+          <button
+            onClick={loadProjects}
+            disabled={loadingProjects || !token.trim()}
+            className="w-full bg-brand text-primary-foreground px-4 py-2.5 rounded text-sm font-medium hover:opacity-90 disabled:opacity-50 inline-flex items-center justify-center gap-2"
+          >
+            {loadingProjects && <Loader2 className="h-4 w-4 animate-spin" />}
+            {loadingProjects ? "Loading projects…" : "Connect"}
+          </button>
+        </div>
+
+        <div className="pt-6 border-t border-border">
+          <div className="space-y-3">
+            <label className="text-sm font-medium block">Or just save your app URL (limited features)</label>
+            <input
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://my-app.vercel.app"
+              className="w-full bg-background border border-border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand"
+            />
+            <p className="text-xs text-muted-foreground">
+              Without a token, you'll only see your app URL — no deployments, logs, or env vars.
+            </p>
+            <button
+              onClick={save}
+              disabled={busy || !url.trim()}
+              className="bg-foreground/10 hover:bg-foreground/20 px-4 py-2 rounded text-sm font-medium disabled:opacity-50"
+            >
+              {busy ? "Saving..." : "Save URL only"}
+            </button>
           </div>
         </div>
       </div>
-    );
-  }
-
-
-  return <VercelConnected ws={ws} hasApi={hasVercelConnection} onEditUrl={() => setEditing(true)} />;
+    </div>
+  );
 }
 
 function ProjectPicker({ projects, busy, onPick }: { projects: any[]; busy: boolean; onPick: (p: { id: string; name: string }) => void }) {

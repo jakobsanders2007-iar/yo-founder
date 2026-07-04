@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth";
 import { Logo } from "@/components/Logo";
 import { Avatar } from "@/components/UserAvatar";
 import {
-  respondAsSenderAi, respondAsCofounderAi, generatePrompt, sendInvite,
+  respondAsSenderAi, respondAsCofounderAi, respondAsClaudeAi, respondAsGptAi, generatePrompt, sendInvite,
 } from "@/lib/yofounder.functions";
 import {
   runClaudeCode, getGithubPRDetail, getRepoTree, getRepoFile,
@@ -32,7 +32,7 @@ export const Route = createFileRoute("/workspaces/$id")({
 });
 
 type Tab = "chat" | "code" | "github" | "vercel" | "supabase" | "domain";
-const TAB_ORDER: Tab[] = ["chat", "code", "github", "vercel", "supabase", "domain"];
+const TAB_ORDER: Tab[] = ["chat", "code", "github", "supabase", "vercel", "domain"];
 
 const REACTION_EMOJIS = ["👍", "❤️", "🎉", "🚀", "😂", "👀"];
 
@@ -350,8 +350,8 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const respondSender = useServerFn(respondAsSenderAi);
-  const respondCofounder = useServerFn(respondAsCofounderAi);
+  const respondClaude = useServerFn(respondAsClaudeAi);
+  const respondGpt = useServerFn(respondAsGptAi);
   const genPrompt = useServerFn(generatePrompt);
 
   const membersById = useMemo(() => {
@@ -428,13 +428,20 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
 
       await supabase.channel(`ws-${workspaceId}`).send({
         type: "broadcast", event: "typing",
-        payload: { name: me?.display_name, provider: me?.ai_provider, color: me?.avatar_color },
+        payload: { name: "Claude", provider: "claude", color: "#6366f1" },
       });
 
-      respondSender({ data: { workspaceId } })
+      respondClaude({ data: { workspaceId } })
         .then((r: any) => { if (r && r.ok === false) setErrorBanner("Something went wrong — try sending your message again"); })
         .catch(() => setErrorBanner("Something went wrong — try sending your message again"));
-      respondCofounder({ data: { workspaceId } }).catch(() => {});
+
+      setTimeout(() => {
+        supabase.channel(`ws-${workspaceId}`).send({
+          type: "broadcast", event: "typing",
+          payload: { name: "ChatGPT", provider: "gpt", color: "#10b981" },
+        });
+        respondGpt({ data: { workspaceId } }).catch(() => {});
+      }, 1000);
     } catch (e: any) {
       setErrorBanner("Something went wrong — try sending your message again");
     } finally {
@@ -486,14 +493,18 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
         )}
         {messages.map((m) => {
           const sender = membersById[m.sender_user_id];
-          const color = sender?.avatar_color ?? "#666";
-          const name = sender?.display_name ?? "?";
+          const color = sender?.avatar_color ?? (m.ai_provider === "claude" ? "#6366f1" : m.ai_provider === "gpt" ? "#10b981" : "#666");
+          const name = sender?.display_name ?? (m.ai_provider === "claude" ? "Claude" : m.ai_provider === "gpt" ? "ChatGPT" : "?");
           const isAi = m.sender_type === "ai";
           const isMine = !isAi && m.sender_user_id === user.id;
           const borderColor = m.ai_provider === "claude" ? "#6366f1" : m.ai_provider === "gpt" ? "#10b981" : m.ai_provider === "gemini" ? "#4285F4" : "transparent";
           const providerName = m.ai_provider === "claude" ? "Claude" : m.ai_provider === "gpt" ? "ChatGPT" : m.ai_provider === "gemini" ? "Gemini" : "AI";
-          const label = isAi ? `${name}'s ${providerName}` : name;
+          const label = isAi ? providerName : name;
           const msgReactions = reactions[m.id] ?? [];
+          const hasFinalPrompt = m.content.includes("FINAL PROMPT:");
+          const promptMatch = m.content.match(/FINAL PROMPT:\s*\n([\s\S]*?)(?:\n\n|$)/);
+          const promptText = promptMatch ? promptMatch[1] : "";
+
           return (
             <div key={m.id} className="flex gap-3 group">
               <Avatar name={name} color={color} size="sm" />
@@ -504,16 +515,39 @@ function ChatTab({ workspaceId, user, members, onPromptSaved }: any) {
                     {new Date(m.created_at).toLocaleTimeString()}
                   </span>
                 </div>
-                <div
-                  className={cn(
-                    "mt-1 text-sm whitespace-pre-wrap leading-relaxed",
-                    isAi ? "font-mono pl-3 border-l-2" : "",
-                    m.is_error ? "text-error" : ""
-                  )}
-                  style={isAi ? { borderColor } : undefined}
-                >
-                  {renderWithMentions(m.content, memberNames)}
-                </div>
+                {hasFinalPrompt ? (
+                  <div className="mt-3 space-y-2">
+                    <div className="text-sm whitespace-pre-wrap leading-relaxed pl-3 border-l-2" style={{ borderColor }}>
+                      {renderWithMentions(m.content.split("FINAL PROMPT:")[0], memberNames)}
+                    </div>
+                    <div className="bg-brand/10 border border-brand/40 rounded p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-semibold text-brand">FINAL PROMPT</span>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(promptText.trim());
+                            toast.success("Copied to clipboard");
+                          }}
+                          title="Copy to Claude Code"
+                          className="text-xs px-2.5 py-1 rounded bg-brand text-primary-foreground hover:opacity-90 inline-flex items-center gap-1.5">
+                          <Copy className="h-3 w-3" /> Copy to Claude Code
+                        </button>
+                      </div>
+                      <pre className="text-xs font-mono whitespace-pre-wrap overflow-hidden text-muted-foreground">{promptText.trim()}</pre>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className={cn(
+                      "mt-1 text-sm whitespace-pre-wrap leading-relaxed",
+                      isAi ? "font-mono pl-3 border-l-2" : "",
+                      m.is_error ? "text-error" : ""
+                    )}
+                    style={isAi ? { borderColor } : undefined}
+                  >
+                    {renderWithMentions(m.content, memberNames)}
+                  </div>
+                )}
                 <MessageReactionsBar
                   messageId={m.id}
                   userId={user.id}
