@@ -31,6 +31,7 @@ export function GithubTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void 
   const [showGh, setShowGh] = useState(false);
   const [ghState, setGhState] = useState<{ ok: boolean; msg: string } | null>(null);
   const saveGh = useServerFn(saveGithubToken);
+  const startOAuth = useServerFn(startGithubOAuth);
 
   const saveRepo = useServerFn(saveWorkspaceRepo);
   const listRepos = useServerFn(listGithubRepos);
