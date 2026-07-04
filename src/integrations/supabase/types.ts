@@ -403,6 +403,8 @@ export type Database = {
           supabase_service_key: string | null
           supabase_url: string | null
           updated_at: string
+          vercel_project_id: string | null
+          vercel_project_name: string | null
           vercel_token: string | null
           workspace_id: string
         }
@@ -416,6 +418,8 @@ export type Database = {
           supabase_service_key?: string | null
           supabase_url?: string | null
           updated_at?: string
+          vercel_project_id?: string | null
+          vercel_project_name?: string | null
           vercel_token?: string | null
           workspace_id: string
         }
@@ -429,6 +433,8 @@ export type Database = {
           supabase_service_key?: string | null
           supabase_url?: string | null
           updated_at?: string
+          vercel_project_id?: string | null
+          vercel_project_name?: string | null
           vercel_token?: string | null
           workspace_id?: string
         }
