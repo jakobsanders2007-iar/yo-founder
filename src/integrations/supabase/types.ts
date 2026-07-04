@@ -395,6 +395,7 @@ export type Database = {
       workspace_secrets: {
         Row: {
           created_at: string
+          custom_ai_keys: Json
           supabase_anon_key: string | null
           supabase_mgmt_refresh: string | null
           supabase_mgmt_token: string | null
@@ -410,6 +411,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          custom_ai_keys?: Json
           supabase_anon_key?: string | null
           supabase_mgmt_refresh?: string | null
           supabase_mgmt_token?: string | null
@@ -425,6 +427,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          custom_ai_keys?: Json
           supabase_anon_key?: string | null
           supabase_mgmt_refresh?: string | null
           supabase_mgmt_token?: string | null
