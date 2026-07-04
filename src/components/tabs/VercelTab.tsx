@@ -12,14 +12,39 @@ import {
   triggerVercelDeploy,
   listVercelProjects,
   saveVercelConnection,
+  getVercelConnection,
 } from "@/lib/integrations.functions";
 
 type SubTab = "deployments" | "logs" | "env";
 
+type VercelConn = {
+  token: string | null;
+  projectId: string | null;
+  projectName: string | null;
+  projectUrl: string | null;
+};
+
 export function VercelTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void }) {
   const [url, setUrl] = useState(ws.vercel_project_url ?? "");
-  const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  // Connection state lives in workspace_secrets — load it on mount
+  const getConn = useServerFn(getVercelConnection);
+  const [conn, setConn] = useState<VercelConn | null>(null);
+  const [checking, setChecking] = useState(true);
+
+  const loadConn = useCallback(async () => {
+    try {
+      const r = await getConn({ data: { workspaceId: ws.id } });
+      setConn(r);
+    } catch {
+      setConn(null);
+    } finally {
+      setChecking(false);
+    }
+  }, [getConn, ws.id]);
+
+  useEffect(() => { loadConn(); }, [loadConn]);
 
   // Token + project-picker flow
   const listProjects = useServerFn(listVercelProjects);
@@ -40,7 +65,6 @@ export function VercelTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void 
     setBusy(false);
     if (error) return toast.error("Couldn't save — please try again");
     toast.success("Your app URL is saved ✓");
-    setEditing(false);
     onWsUpdate();
   };
 
@@ -53,7 +77,7 @@ export function VercelTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void 
       setProjects(r.projects);
       if (!r.projects.length) toast.message("No projects found on this Vercel account");
     } catch (e: any) {
-      toast.error(e?.message ?? "Couldn't load projects — check your token");
+      toast.error("Token didn't work — check it and try again");
     } finally {
       setLoadingProjects(false);
     }
@@ -69,6 +93,7 @@ export function VercelTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void 
       toast.success(`Connected to ${p.name} ✓`);
       setToken("");
       setProjects(null);
+      await loadConn();
       onWsUpdate();
     } catch (e: any) {
       toast.error(e?.message ?? "Couldn't save connection");
@@ -76,6 +101,19 @@ export function VercelTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void 
       setBusy(false);
     }
   };
+
+  if (checking) {
+    return (
+      <div className="p-6 flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+      </div>
+    );
+  }
+
+  // Already connected — connection lives in workspace_secrets, not on ws
+  if (conn?.token && conn?.projectId) {
+    return <VercelConnected ws={ws} conn={conn} />;
+  }
 
   // Has token but no project selected - show project picker
   if (token && projects) {
@@ -201,38 +239,33 @@ function ProjectPicker({ projects, busy, onPick }: { projects: any[]; busy: bool
   );
 }
 
-function VercelConnected({ ws, hasApi, onEditUrl }: { ws: any; hasApi: boolean; onEditUrl: () => void }) {
+function VercelConnected({ ws, conn }: { ws: any; conn: VercelConn }) {
   const [sub, setSub] = useState<SubTab>("deployments");
   const [selectedDeployment, setSelectedDeployment] = useState<string | null>(null);
+  const projectUrl = conn.projectUrl ?? ws.vercel_project_url ?? (conn.projectName ? `https://${conn.projectName}.vercel.app` : null);
 
   return (
     <div className="p-6 max-w-5xl space-y-4">
       <div className="bg-surface border border-border rounded-lg p-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="inline-flex items-center gap-1.5 text-xs text-success">
-            <Check className="h-3.5 w-3.5" /> Live
+            <Check className="h-3.5 w-3.5" /> Connected{conn.projectName ? ` — ${conn.projectName}` : ""}
           </div>
-          <a href={ws.vercel_project_url} target="_blank" rel="noreferrer"
-             className="mt-1 block text-lg font-mono text-brand hover:underline">
-            {ws.vercel_project_url.replace(/^https?:\/\//, "")}
-          </a>
+          {projectUrl && (
+            <a href={projectUrl} target="_blank" rel="noreferrer"
+               className="mt-1 block text-lg font-mono text-brand hover:underline">
+              {projectUrl.replace(/^https?:\/\//, "")}
+            </a>
+          )}
         </div>
-        <div className="flex gap-2">
-          <a href={ws.vercel_project_url} target="_blank" rel="noreferrer" className="bg-brand text-primary-foreground px-3 py-1.5 rounded text-sm inline-flex items-center gap-1.5">
+        {projectUrl && (
+          <a href={projectUrl} target="_blank" rel="noreferrer" className="bg-brand text-primary-foreground px-3 py-1.5 rounded text-sm inline-flex items-center gap-1.5">
             Visit <ExternalLink className="h-3.5 w-3.5" />
           </a>
-          <button onClick={onEditUrl} className="px-3 py-1.5 border border-border rounded text-sm hover:border-foreground">
-            Change URL
-          </button>
-        </div>
+        )}
       </div>
 
-      {!hasApi ? (
-        <div className="bg-surface border border-border rounded-lg p-6 text-sm text-muted-foreground">
-          Add a Vercel API token in workspace settings to see deployments, logs, and env vars here.
-        </div>
-      ) : (
-        <>
+      <>
           <div className="flex gap-1 border-b border-border">
             <SubTabBtn active={sub === "deployments"} onClick={() => setSub("deployments")} icon={<ListChecks className="h-4 w-4" />} label="Deployments" />
             <SubTabBtn active={sub === "logs"} onClick={() => setSub("logs")} icon={<ScrollText className="h-4 w-4" />} label="Logs" />
@@ -246,8 +279,7 @@ function VercelConnected({ ws, hasApi, onEditUrl }: { ws: any; hasApi: boolean; 
             <LogsPanel ws={ws} deploymentId={selectedDeployment} />
           )}
           {sub === "env" && <EnvPanel ws={ws} />}
-        </>
-      )}
+      </>
     </div>
   );
 }

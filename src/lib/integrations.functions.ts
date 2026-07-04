@@ -174,6 +174,26 @@ export const saveVercelConnection = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const getVercelConnection = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ workspaceId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context as any;
+    await assertWorkspaceAccess(supabase, data.workspaceId);
+    const { data: row } = await supabaseAdmin.from("workspace_secrets")
+      .select("vercel_token, vercel_project_id, vercel_project_name")
+      .eq("workspace_id", data.workspaceId).maybeSingle();
+    const { data: ws } = await supabase.from("workspaces")
+      .select("vercel_project_url").eq("id", data.workspaceId).maybeSingle();
+    const r: any = row ?? {};
+    return {
+      token: r.vercel_token ?? null,
+      projectId: r.vercel_project_id ?? null,
+      projectName: r.vercel_project_name ?? null,
+      projectUrl: ws?.vercel_project_url ?? null,
+    };
+  });
+
 export const getVercelDeployments = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) =>
@@ -1728,4 +1748,17 @@ export const getSupabaseConnection = createServerFn({ method: "POST" })
       projectRef: r.supabase_project_ref ?? null,
       projectName: r.supabase_project_name ?? null,
     };
+  });
+
+export const disconnectSupabase = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ workspaceId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context as any;
+    await assertWorkspaceAccess(supabase, data.workspaceId);
+    await upsertWorkspaceSecrets(data.workspaceId, {
+      supabase_mgmt_token: null,
+      supabase_mgmt_refresh: null,
+    });
+    return { ok: true };
   });

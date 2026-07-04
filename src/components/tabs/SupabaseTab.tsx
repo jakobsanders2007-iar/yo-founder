@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { ExternalLink, Check, Database, Loader2, Eye, EyeOff, RefreshCw } from "lucide-react";
+import { ExternalLink, Check, Database, Loader2, Eye, EyeOff, RefreshCw, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import {
   startSupabaseMgmtOAuth,
@@ -8,7 +8,13 @@ import {
   connectSupabaseMgmtProject,
   getSupabaseConnection,
   saveSupabaseConnection,
+  disconnectSupabase,
 } from "@/lib/integrations.functions";
+
+function isScopeError(e: any): boolean {
+  const msg = String(e?.message ?? "").toLowerCase();
+  return msg.includes("403") || msg.includes("missing required scopes") || msg.includes("couldn't read service_role key");
+}
 
 export function SupabaseTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void }) {
   const startOAuth = useServerFn(startSupabaseMgmtOAuth);
@@ -16,12 +22,14 @@ export function SupabaseTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => voi
   const connectProject = useServerFn(connectSupabaseMgmtProject);
   const getConn = useServerFn(getSupabaseConnection);
   const saveManual = useServerFn(saveSupabaseConnection);
+  const disconnectFn = useServerFn(disconnectSupabase);
 
   const [conn, setConn] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<any[] | null>(null);
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [scopeError, setScopeError] = useState(false);
   const [showKey, setShowKey] = useState(false);
   const [manualUrl, setManualUrl] = useState("");
   const [manualKey, setManualKey] = useState("");
@@ -54,7 +62,8 @@ export function SupabaseTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => voi
       const r = await listProjects({ data: { workspaceId: ws.id } });
       setProjects(r.projects);
     } catch (e: any) {
-      toast.error(e?.message ?? "Couldn't load projects");
+      if (isScopeError(e)) setScopeError(true);
+      else toast.error(e?.message ?? "Couldn't load projects");
     } finally {
       setLoadingProjects(false);
     }
@@ -68,7 +77,24 @@ export function SupabaseTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => voi
       await reload();
       onWsUpdate();
     } catch (e: any) {
-      toast.error(e?.message ?? "Couldn't connect project");
+      if (isScopeError(e)) setScopeError(true);
+      else toast.error(e?.message ?? "Couldn't connect project");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Clears the stale mgmt token and immediately restarts OAuth for a fresh one with correct scopes
+  const reconnectSupabase = async () => {
+    setBusy(true);
+    try {
+      await disconnectFn({ data: { workspaceId: ws.id } });
+      setScopeError(false);
+      setProjects(null);
+      await connect();
+      await reload();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Couldn't reconnect");
     } finally {
       setBusy(false);
     }
@@ -98,6 +124,7 @@ export function SupabaseTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => voi
   if (conn?.url && conn?.serviceKey) {
     return (
       <div className="p-6 max-w-3xl space-y-4">
+        {scopeError && <ScopeErrorBanner busy={busy} onReconnect={reconnectSupabase} />}
         <div className="bg-surface border border-border rounded-lg p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div>
@@ -149,6 +176,7 @@ export function SupabaseTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => voi
   if (conn?.hasMgmt) {
     return (
       <div className="p-6 max-w-3xl space-y-4">
+        {scopeError && <ScopeErrorBanner busy={busy} onReconnect={reconnectSupabase} />}
         <div className="bg-surface border border-border rounded-lg p-6">
           <div className="inline-flex items-center gap-1.5 text-xs text-success mb-2">
             <Check className="h-3.5 w-3.5" /> Authorized with Supabase
@@ -214,6 +242,26 @@ export function SupabaseTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => voi
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ScopeErrorBanner({ busy, onReconnect }: { busy: boolean; onReconnect: () => void }) {
+  return (
+    <div className="bg-error/10 border border-error/40 rounded-lg p-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="flex items-start gap-2.5 min-w-0">
+        <AlertTriangle className="h-4 w-4 text-error mt-0.5 shrink-0" />
+        <p className="text-sm text-foreground/90">
+          Your Supabase connection needs updated permissions. Disconnect and reconnect to fix this.
+        </p>
+      </div>
+      <button
+        onClick={onReconnect}
+        disabled={busy}
+        className="bg-brand text-primary-foreground px-4 py-2 rounded text-sm font-medium hover:opacity-90 disabled:opacity-50 shrink-0"
+      >
+        {busy ? "Reconnecting…" : "Reconnect Supabase"}
+      </button>
     </div>
   );
 }

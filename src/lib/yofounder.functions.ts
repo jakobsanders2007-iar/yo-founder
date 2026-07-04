@@ -584,10 +584,11 @@ function escapeHtml(s: string) {
 async function respondAsGroupAiMember(opts: {
   supabase: any;
   workspaceId: string;
+  forUserId: string;
   aiName: "claude" | "gpt";
   systemPrompt: string;
 }) {
-  const { supabase, workspaceId, aiName, systemPrompt } = opts;
+  const { supabase, workspaceId, forUserId, aiName, systemPrompt } = opts;
   const history = await fetchHistory(supabase, workspaceId);
   const formatted = buildHistoryForGroupChat(history);
 
@@ -600,7 +601,7 @@ async function respondAsGroupAiMember(opts: {
     if (!key) {
       await supabaseAdmin.from("messages").insert({
         workspace_id: workspaceId,
-        sender_user_id: "00000000-0000-0000-0000-000000000001",
+        sender_user_id: forUserId,
         sender_type: "ai",
         ai_provider: "claude",
         content: "Claude is not configured on this server.",
@@ -615,7 +616,7 @@ async function respondAsGroupAiMember(opts: {
     if (!key) {
       await supabaseAdmin.from("messages").insert({
         workspace_id: workspaceId,
-        sender_user_id: "00000000-0000-0000-0000-000000000002",
+        sender_user_id: forUserId,
         sender_type: "ai",
         ai_provider: "gpt",
         content: "ChatGPT is not configured on this server.",
@@ -630,10 +631,9 @@ async function respondAsGroupAiMember(opts: {
   try {
     text = await callProvider(provider, apiKey, systemPrompt, formatted, CHAT_TOKENS);
   } catch (e: any) {
-    const userId = aiName === "claude" ? "00000000-0000-0000-0000-000000000001" : "00000000-0000-0000-0000-000000000002";
     await supabaseAdmin.from("messages").insert({
       workspace_id: workspaceId,
-      sender_user_id: userId,
+      sender_user_id: forUserId,
       sender_type: "ai",
       ai_provider: provider,
       content: "Something went wrong — try sending your message again.",
@@ -642,10 +642,9 @@ async function respondAsGroupAiMember(opts: {
     return { ok: false, error: e?.message ?? "Unknown error" };
   }
 
-  const userId = aiName === "claude" ? "00000000-0000-0000-0000-000000000001" : "00000000-0000-0000-0000-000000000002";
   await supabaseAdmin.from("messages").insert({
     workspace_id: workspaceId,
-    sender_user_id: userId,
+    sender_user_id: forUserId,
     sender_type: "ai",
     ai_provider: provider,
     content: text.trim(),
@@ -668,7 +667,7 @@ export const respondAsClaudeAi = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => z.object({ workspaceId: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
-    const { supabase } = context as any;
+    const { supabase, userId } = context as any;
     const { data: isMember } = await supabase.rpc("is_workspace_member", { _workspace_id: data.workspaceId });
     if (!isMember) throw new Error("Not a member");
 
@@ -692,14 +691,14 @@ When the user describes something they want to build or fix:
 
 Keep responses conversational and under 6 sentences unless you're outputting the final prompt. Never use bullet points or headers in regular chat — save structure for the final prompt itself.`;
 
-    return respondAsGroupAiMember({ supabase, workspaceId: data.workspaceId, aiName: "claude", systemPrompt });
+    return respondAsGroupAiMember({ supabase, workspaceId: data.workspaceId, forUserId: userId, aiName: "claude", systemPrompt });
   });
 
 export const respondAsGptAi = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => z.object({ workspaceId: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
-    const { supabase } = context as any;
+    const { supabase, userId } = context as any;
     const { data: isMember } = await supabase.rpc("is_workspace_member", { _workspace_id: data.workspaceId });
     if (!isMember) throw new Error("Not a member");
 
@@ -723,7 +722,7 @@ When the user describes something they want to build or fix:
 
 Keep responses conversational and under 6 sentences unless outputting the final prompt. Never use bullets or headers in regular chat.`;
 
-    return respondAsGroupAiMember({ supabase, workspaceId: data.workspaceId, aiName: "gpt", systemPrompt });
+    return respondAsGroupAiMember({ supabase, workspaceId: data.workspaceId, forUserId: userId, aiName: "gpt", systemPrompt });
   });
 
 // ---------- Custom AI Management (BYOM) ----------
