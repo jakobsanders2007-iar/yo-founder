@@ -1,7 +1,18 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
-import { ExternalLink, Check, Rocket } from "lucide-react";
+import { ExternalLink, Check, Rocket, Loader2, RefreshCw, Trash2, Plus, ScrollText, ListChecks, KeyRound } from "lucide-react";
 import { toast } from "sonner";
+import {
+  getVercelDeployments,
+  getVercelBuildLogs,
+  getVercelEnvVars,
+  addVercelEnvVar,
+  deleteVercelEnvVar,
+  triggerVercelDeploy,
+} from "@/lib/integrations.functions";
+
+type SubTab = "deployments" | "logs" | "env";
 
 export function VercelTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void }) {
   const [url, setUrl] = useState(ws.vercel_project_url ?? "");
@@ -23,102 +34,332 @@ export function VercelTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void 
     onWsUpdate();
   };
 
+  const hasVercelConnection = !!ws.vercel_token && !!ws.vercel_project_id;
   const repoCloneUrl = ws.github_repo
     ? `https://vercel.com/new/clone?repository-url=https://github.com/${ws.github_repo}`
     : "https://vercel.com/new";
 
-  // ───────── Connected ─────────
-  if (ws.vercel_project_url && !editing) {
+  // Not connected (no URL saved yet)
+  if (!ws.vercel_project_url || editing) {
     return (
-      <div className="p-6 max-w-3xl space-y-6">
-        <div className="bg-surface border border-border rounded-lg p-6">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="inline-flex items-center gap-1.5 text-xs text-success">
-              <Check className="h-3.5 w-3.5" /> Your app is online
-            </span>
+      <div className="p-6 max-w-2xl mx-auto">
+        <div className="bg-surface border border-border rounded-lg p-10 text-center">
+          <div className="mx-auto h-20 w-20 rounded-full bg-foreground/5 flex items-center justify-center mb-5">
+            <Rocket className="h-10 w-10" />
           </div>
-          <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Your app's address</div>
+          <h2 className="text-xl font-semibold">Get your app online 🚀</h2>
+          <p className="text-sm text-muted-foreground mt-2 max-w-sm mx-auto">
+            Vercel puts your app on the internet for free.
+          </p>
           <a
-            href={ws.vercel_project_url}
+            href={repoCloneUrl}
             target="_blank"
             rel="noreferrer"
-            className="text-lg font-mono text-brand hover:underline inline-flex items-center gap-2 break-all"
+            className="mt-6 inline-flex items-center justify-center gap-2 bg-brand text-primary-foreground font-semibold px-6 py-3 rounded-lg text-base hover:opacity-90"
           >
-            {ws.vercel_project_url.replace(/^https?:\/\//, "")}
-            <ExternalLink className="h-4 w-4 shrink-0" />
+            Set up Vercel <ExternalLink className="h-4 w-4" />
           </a>
-          <div className="mt-5 flex flex-wrap gap-2">
-            <a
-              href={ws.vercel_project_url}
-              target="_blank"
-              rel="noreferrer"
-              className="bg-brand text-primary-foreground px-4 py-2 rounded text-sm font-medium hover:opacity-90 inline-flex items-center gap-1.5"
-            >
-              Visit my app <ExternalLink className="h-3.5 w-3.5" />
-            </a>
-            <button
-              onClick={() => setEditing(true)}
-              className="px-4 py-2 border border-border rounded text-sm hover:border-foreground"
-            >
-              Change URL
-            </button>
+          <div className="mt-8 pt-6 border-t border-border text-left">
+            <label className="text-xs text-muted-foreground">Your app URL</label>
+            <input
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://my-app.vercel.app"
+              className="mt-1 w-full bg-background border border-border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand"
+            />
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={save}
+                disabled={busy || !url.trim()}
+                className="bg-brand text-primary-foreground px-4 py-2 rounded text-sm font-medium hover:opacity-90 disabled:opacity-50"
+              >
+                {busy ? "Saving..." : "Save my app URL"}
+              </button>
+              {editing && (
+                <button
+                  onClick={() => { setEditing(false); setUrl(ws.vercel_project_url ?? ""); }}
+                  className="px-4 py-2 border border-border rounded text-sm hover:border-foreground"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
     );
   }
 
-  // ───────── Not connected ─────────
-  return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <div className="bg-surface border border-border rounded-lg p-10 text-center">
-        <div className="mx-auto h-20 w-20 rounded-full bg-foreground/5 flex items-center justify-center mb-5">
-          <Rocket className="h-10 w-10" />
-        </div>
-        <h2 className="text-xl font-semibold">Get your app online 🚀</h2>
-        <p className="text-sm text-muted-foreground mt-2 max-w-sm mx-auto">
-          Vercel puts your app on the internet for free. Sign up with the same GitHub account you used here — it takes 30 seconds.
-        </p>
-        <a
-          href={repoCloneUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-6 inline-flex items-center justify-center gap-2 bg-brand text-primary-foreground font-semibold px-6 py-3 rounded-lg text-base hover:opacity-90"
-        >
-          Set up Vercel <ExternalLink className="h-4 w-4" />
-        </a>
+  return <VercelConnected ws={ws} hasApi={hasVercelConnection} onEditUrl={() => setEditing(true)} />;
+}
 
-        <div className="mt-8 pt-6 border-t border-border text-left">
-          <p className="text-sm text-muted-foreground mb-3">
-            Come back here after Vercel finishes and paste your app URL below 👇
-          </p>
-          <label className="text-xs text-muted-foreground">Your app URL</label>
-          <input
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://my-app.vercel.app"
-            className="mt-1 w-full bg-background border border-border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand"
-          />
-          <p className="mt-2 text-xs text-muted-foreground">
-            Vercel gives you this address after publishing your app.
-          </p>
-          <div className="mt-3 flex gap-2">
-            <button
-              onClick={save}
-              disabled={busy || !url.trim()}
-              className="bg-brand text-primary-foreground px-4 py-2 rounded text-sm font-medium hover:opacity-90 disabled:opacity-50"
-            >
-              {busy ? "Saving..." : "Save my app URL"}
-            </button>
-            {editing && (
-              <button
-                onClick={() => { setEditing(false); setUrl(ws.vercel_project_url ?? ""); }}
-                className="px-4 py-2 border border-border rounded text-sm hover:border-foreground"
-              >
-                Cancel
-              </button>
-            )}
+function VercelConnected({ ws, hasApi, onEditUrl }: { ws: any; hasApi: boolean; onEditUrl: () => void }) {
+  const [sub, setSub] = useState<SubTab>("deployments");
+  const [selectedDeployment, setSelectedDeployment] = useState<string | null>(null);
+
+  return (
+    <div className="p-6 max-w-5xl space-y-4">
+      <div className="bg-surface border border-border rounded-lg p-5 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="inline-flex items-center gap-1.5 text-xs text-success">
+            <Check className="h-3.5 w-3.5" /> Live
           </div>
+          <a href={ws.vercel_project_url} target="_blank" rel="noreferrer"
+             className="mt-1 block text-lg font-mono text-brand hover:underline">
+            {ws.vercel_project_url.replace(/^https?:\/\//, "")}
+          </a>
+        </div>
+        <div className="flex gap-2">
+          <a href={ws.vercel_project_url} target="_blank" rel="noreferrer" className="bg-brand text-primary-foreground px-3 py-1.5 rounded text-sm inline-flex items-center gap-1.5">
+            Visit <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+          <button onClick={onEditUrl} className="px-3 py-1.5 border border-border rounded text-sm hover:border-foreground">
+            Change URL
+          </button>
+        </div>
+      </div>
+
+      {!hasApi ? (
+        <div className="bg-surface border border-border rounded-lg p-6 text-sm text-muted-foreground">
+          Add a Vercel API token in workspace settings to see deployments, logs, and env vars here.
+        </div>
+      ) : (
+        <>
+          <div className="flex gap-1 border-b border-border">
+            <SubTabBtn active={sub === "deployments"} onClick={() => setSub("deployments")} icon={<ListChecks className="h-4 w-4" />} label="Deployments" />
+            <SubTabBtn active={sub === "logs"} onClick={() => setSub("logs")} icon={<ScrollText className="h-4 w-4" />} label="Logs" />
+            <SubTabBtn active={sub === "env"} onClick={() => setSub("env")} icon={<KeyRound className="h-4 w-4" />} label="Env vars" />
+          </div>
+
+          {sub === "deployments" && (
+            <DeploymentsPanel ws={ws} onSelect={(id) => { setSelectedDeployment(id); setSub("logs"); }} />
+          )}
+          {sub === "logs" && (
+            <LogsPanel ws={ws} deploymentId={selectedDeployment} />
+          )}
+          {sub === "env" && <EnvPanel ws={ws} />}
+        </>
+      )}
+    </div>
+  );
+}
+
+function SubTabBtn({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-4 py-2 text-sm border-b-2 -mb-px inline-flex items-center gap-2 ${
+        active ? "text-foreground border-brand" : "text-muted-foreground border-transparent hover:text-foreground"
+      }`}
+    >
+      {icon} {label}
+    </button>
+  );
+}
+
+function DeploymentsPanel({ ws, onSelect }: { ws: any; onSelect: (id: string) => void }) {
+  const list = useServerFn(getVercelDeployments);
+  const redeploy = useServerFn(triggerVercelDeploy);
+  const [deps, setDeps] = useState<any[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await list({ data: { workspaceId: ws.id } });
+      setDeps(r.deployments);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Couldn't load deployments");
+    } finally { setLoading(false); }
+  }, [list, ws.id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const trigger = async () => {
+    setBusy(true);
+    try {
+      await redeploy({ data: { workspaceId: ws.id } });
+      toast.success("Redeploy queued");
+      setTimeout(load, 1500);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Couldn't redeploy");
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="bg-surface border border-border rounded-lg">
+      <div className="flex items-center justify-between p-3 border-b border-border">
+        <div className="text-sm font-medium">Recent deployments</div>
+        <div className="flex gap-2">
+          <button onClick={load} disabled={loading} className="text-xs border border-border rounded px-2 py-1 inline-flex items-center gap-1 hover:border-foreground disabled:opacity-50">
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
+          </button>
+          <button onClick={trigger} disabled={busy} className="text-xs bg-brand text-primary-foreground rounded px-3 py-1 disabled:opacity-50">
+            {busy ? "Deploying…" : "Redeploy prod"}
+          </button>
+        </div>
+      </div>
+      {loading && !deps && <div className="p-6 text-sm text-muted-foreground inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>}
+      {deps?.length === 0 && <div className="p-6 text-sm text-muted-foreground">No deployments yet.</div>}
+      <div className="divide-y divide-border">
+        {(deps ?? []).map((d) => (
+          <button key={d.id} onClick={() => onSelect(d.id)} className="w-full text-left p-3 hover:bg-foreground/5 flex items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <StateBadge state={d.state} />
+                <span className="text-sm font-medium truncate">{d.commitMessage || d.branch || "deployment"}</span>
+              </div>
+              <div className="text-xs text-muted-foreground font-mono truncate mt-0.5">
+                {d.branch ? `${d.branch} · ` : ""}{d.url ?? d.id}
+              </div>
+            </div>
+            <div className="text-xs text-muted-foreground whitespace-nowrap">{d.created ? new Date(d.created).toLocaleString() : ""}</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StateBadge({ state }: { state: string }) {
+  const s = (state || "").toLowerCase();
+  const cls =
+    s === "ready" ? "bg-success/15 text-success" :
+    s === "error" || s === "canceled" ? "bg-error/15 text-error" :
+    s === "building" || s === "queued" || s === "initializing" ? "bg-brand/15 text-brand" :
+    "bg-foreground/10 text-muted-foreground";
+  return <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${cls}`}>{state || "?"}</span>;
+}
+
+function LogsPanel({ ws, deploymentId }: { ws: any; deploymentId: string | null }) {
+  const getLogs = useServerFn(getVercelBuildLogs);
+  const [lines, setLines] = useState<any[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!deploymentId) return;
+    setLoading(true);
+    try {
+      const r = await getLogs({ data: { workspaceId: ws.id, deploymentId } });
+      setLines(r.lines);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Couldn't load logs");
+    } finally { setLoading(false); }
+  }, [getLogs, ws.id, deploymentId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (!deploymentId) {
+    return <div className="bg-surface border border-border rounded-lg p-6 text-sm text-muted-foreground">Pick a deployment from the Deployments tab to see its build logs.</div>;
+  }
+
+  return (
+    <div className="bg-surface border border-border rounded-lg">
+      <div className="flex items-center justify-between p-3 border-b border-border">
+        <div className="text-xs font-mono text-muted-foreground truncate">{deploymentId}</div>
+        <button onClick={load} disabled={loading} className="text-xs border border-border rounded px-2 py-1 inline-flex items-center gap-1 hover:border-foreground disabled:opacity-50">
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
+        </button>
+      </div>
+      <pre className="p-4 text-xs font-mono bg-background max-h-[500px] overflow-auto whitespace-pre-wrap">
+        {loading && !lines ? "Loading…" : (lines ?? []).map((l: any, i: number) => `${l.text}\n`).join("") || "No output."}
+      </pre>
+    </div>
+  );
+}
+
+function EnvPanel({ ws }: { ws: any }) {
+  const listEnv = useServerFn(getVercelEnvVars);
+  const addEnv = useServerFn(addVercelEnvVar);
+  const delEnv = useServerFn(deleteVercelEnvVar);
+  const [envs, setEnvs] = useState<any[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [k, setK] = useState("");
+  const [v, setV] = useState("");
+  const [targets, setTargets] = useState<Record<string, boolean>>({ production: true, preview: true, development: false });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await listEnv({ data: { workspaceId: ws.id } });
+      setEnvs(r.envs);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Couldn't load env vars");
+    } finally { setLoading(false); }
+  }, [listEnv, ws.id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const add = async () => {
+    if (!k.trim() || !v.trim()) return;
+    const target = Object.entries(targets).filter(([_, on]) => on).map(([n]) => n) as any;
+    if (!target.length) return toast.error("Pick at least one environment");
+    setBusy(true);
+    try {
+      await addEnv({ data: { workspaceId: ws.id, key: k.trim(), value: v, target } });
+      setK(""); setV("");
+      toast.success("Env var added");
+      await load();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Couldn't add");
+    } finally { setBusy(false); }
+  };
+
+  const remove = async (envId: string) => {
+    if (!confirm("Delete this env var?")) return;
+    try {
+      await delEnv({ data: { workspaceId: ws.id, envId } });
+      toast.success("Deleted");
+      await load();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Couldn't delete");
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-surface border border-border rounded-lg p-4">
+        <div className="text-sm font-medium mb-2 inline-flex items-center gap-2"><Plus className="h-4 w-4" /> Add env var</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <input value={k} onChange={(e) => setK(e.target.value.toUpperCase())} placeholder="KEY_NAME" className="bg-background border border-border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand" />
+          <input value={v} onChange={(e) => setV(e.target.value)} placeholder="value" className="bg-background border border-border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand" />
+        </div>
+        <div className="mt-2 flex flex-wrap gap-3 text-xs">
+          {(["production","preview","development"] as const).map((t) => (
+            <label key={t} className="inline-flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" checked={!!targets[t]} onChange={(e) => setTargets((p) => ({ ...p, [t]: e.target.checked }))} />
+              {t}
+            </label>
+          ))}
+        </div>
+        <button onClick={add} disabled={busy || !k.trim() || !v.trim()} className="mt-3 bg-brand text-primary-foreground rounded px-4 py-2 text-sm font-medium disabled:opacity-50">
+          {busy ? "Adding…" : "Add"}
+        </button>
+      </div>
+
+      <div className="bg-surface border border-border rounded-lg">
+        <div className="flex items-center justify-between p-3 border-b border-border">
+          <div className="text-sm font-medium">Env vars</div>
+          <button onClick={load} disabled={loading} className="text-xs border border-border rounded px-2 py-1 inline-flex items-center gap-1 hover:border-foreground disabled:opacity-50">
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
+          </button>
+        </div>
+        {loading && !envs && <div className="p-6 text-sm text-muted-foreground inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>}
+        {envs?.length === 0 && <div className="p-6 text-sm text-muted-foreground">No env vars yet.</div>}
+        <div className="divide-y divide-border">
+          {(envs ?? []).map((e: any) => (
+            <div key={e.id} className="p-3 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="font-mono text-sm truncate">{e.key}</div>
+                <div className="text-xs text-muted-foreground">{(e.target ?? []).join(", ") || "—"} · {e.type}</div>
+              </div>
+              <button onClick={() => remove(e.id)} className="text-xs text-muted-foreground hover:text-error inline-flex items-center gap-1">
+                <Trash2 className="h-3.5 w-3.5" /> Delete
+              </button>
+            </div>
+          ))}
         </div>
       </div>
     </div>
