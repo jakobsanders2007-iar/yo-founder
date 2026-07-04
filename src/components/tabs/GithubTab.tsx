@@ -68,19 +68,14 @@ export function GithubTab({ ws, onWsUpdate }: { ws: any; onWsUpdate: () => void 
   const connectGithub = async () => {
     setGhBusy(true);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "github",
-        options: {
-          redirectTo: window.location.origin + "/dashboard",
-          scopes: "repo read:user user:email",
-        },
-      });
-      if (error) throw error;
-    } catch {
-      toast.error("Couldn't connect GitHub right now — please try again or use email to sign in");
+      const { url } = await startOAuth({ data: { origin: window.location.origin } });
+      window.location.href = url;
+    } catch (e: any) {
+      toast.error(e?.message ?? "Couldn't start GitHub connect");
       setGhBusy(false);
     }
   };
+
 
   const handlePickRepo = async (full_name: string) => {
     try {
