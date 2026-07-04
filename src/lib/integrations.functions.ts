@@ -362,19 +362,19 @@ export const saveSupabaseConnection = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase } = context as any;
+    await assertWorkspaceAccess(supabase, data.workspaceId);
     const base = data.url.replace(/\/$/, "");
-    const { error } = await supabase
-      .from("workspaces")
-      .update({ supabase_url: base, supabase_service_key: data.serviceKey })
-      .eq("id", data.workspaceId);
-    if (error) throw new Error(error.message);
+    await upsertWorkspaceSecrets(data.workspaceId, {
+      supabase_url: base,
+      supabase_service_key: data.serviceKey,
+    });
     return { ok: true };
   });
 
 async function getRemoteSb(supabase: any, workspaceId: string) {
-  const ws = await getWorkspace(supabase, workspaceId);
-  if (!ws.supabase_url || !ws.supabase_service_key) throw new Error("Supabase not connected");
-  return { base: ws.supabase_url.replace(/\/$/, ""), key: ws.supabase_service_key };
+  const s = await getWorkspaceSecrets(supabase, workspaceId);
+  if (!s.supabase_url || !s.supabase_service_key) throw new Error("Supabase not connected");
+  return { base: s.supabase_url.replace(/\/$/, ""), key: s.supabase_service_key };
 }
 
 async function runRemoteSql(base: string, key: string, sql: string) {
