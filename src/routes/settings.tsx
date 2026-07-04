@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { Logo } from "@/components/Logo";
 import { saveAiKey, saveGithubToken } from "@/lib/yofounder.functions";
+import { startGithubOAuth } from "@/lib/integrations.functions";
 import { toast } from "sonner";
 import { ArrowLeft, Check, Eye, EyeOff, X, Github } from "lucide-react";
 

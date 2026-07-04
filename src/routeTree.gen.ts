@@ -17,6 +17,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as WorkspacesNewRouteImport } from './routes/workspaces.new'
 import { Route as WorkspacesIdRouteImport } from './routes/workspaces.$id'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
+import { Route as AuthSupabaseCallbackRouteImport } from './routes/auth.supabase.callback'
 import { Route as AuthGithubCallbackRouteImport } from './routes/auth.github.callback'
 
 const SettingsRoute = SettingsRouteImport.update({
@@ -59,6 +60,11 @@ const InviteTokenRoute = InviteTokenRouteImport.update({
   path: '/invite/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthSupabaseCallbackRoute = AuthSupabaseCallbackRouteImport.update({
+  id: '/auth/supabase/callback',
+  path: '/auth/supabase/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthGithubCallbackRoute = AuthGithubCallbackRouteImport.update({
   id: '/auth/github/callback',
   path: '/auth/github/callback',
@@ -75,6 +81,7 @@ export interface FileRoutesByFullPath {
   '/workspaces/$id': typeof WorkspacesIdRoute
   '/workspaces/new': typeof WorkspacesNewRoute
   '/auth/github/callback': typeof AuthGithubCallbackRoute
+  '/auth/supabase/callback': typeof AuthSupabaseCallbackRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -86,6 +93,7 @@ export interface FileRoutesByTo {
   '/workspaces/$id': typeof WorkspacesIdRoute
   '/workspaces/new': typeof WorkspacesNewRoute
   '/auth/github/callback': typeof AuthGithubCallbackRoute
+  '/auth/supabase/callback': typeof AuthSupabaseCallbackRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -98,6 +106,7 @@ export interface FileRoutesById {
   '/workspaces/$id': typeof WorkspacesIdRoute
   '/workspaces/new': typeof WorkspacesNewRoute
   '/auth/github/callback': typeof AuthGithubCallbackRoute
+  '/auth/supabase/callback': typeof AuthSupabaseCallbackRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -111,6 +120,7 @@ export interface FileRouteTypes {
     | '/workspaces/$id'
     | '/workspaces/new'
     | '/auth/github/callback'
+    | '/auth/supabase/callback'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -122,6 +132,7 @@ export interface FileRouteTypes {
     | '/workspaces/$id'
     | '/workspaces/new'
     | '/auth/github/callback'
+    | '/auth/supabase/callback'
   id:
     | '__root__'
     | '/'
@@ -133,6 +144,7 @@ export interface FileRouteTypes {
     | '/workspaces/$id'
     | '/workspaces/new'
     | '/auth/github/callback'
+    | '/auth/supabase/callback'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -145,6 +157,7 @@ export interface RootRouteChildren {
   WorkspacesIdRoute: typeof WorkspacesIdRoute
   WorkspacesNewRoute: typeof WorkspacesNewRoute
   AuthGithubCallbackRoute: typeof AuthGithubCallbackRoute
+  AuthSupabaseCallbackRoute: typeof AuthSupabaseCallbackRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -205,6 +218,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InviteTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/auth/supabase/callback': {
+      id: '/auth/supabase/callback'
+      path: '/auth/supabase/callback'
+      fullPath: '/auth/supabase/callback'
+      preLoaderRoute: typeof AuthSupabaseCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth/github/callback': {
       id: '/auth/github/callback'
       path: '/auth/github/callback'
@@ -225,6 +245,7 @@ const rootRouteChildren: RootRouteChildren = {
   WorkspacesIdRoute: WorkspacesIdRoute,
   WorkspacesNewRoute: WorkspacesNewRoute,
   AuthGithubCallbackRoute: AuthGithubCallbackRoute,
+  AuthSupabaseCallbackRoute: AuthSupabaseCallbackRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
