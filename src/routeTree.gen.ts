@@ -17,7 +17,6 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as WorkspacesNewRouteImport } from './routes/workspaces.new'
 import { Route as WorkspacesIdRouteImport } from './routes/workspaces.$id'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
-import { Route as AuthVercelCallbackRouteImport } from './routes/auth.vercel.callback'
 import { Route as AuthSupabaseCallbackRouteImport } from './routes/auth.supabase.callback'
 import { Route as AuthGithubCallbackRouteImport } from './routes/auth.github.callback'
 
@@ -61,11 +60,6 @@ const InviteTokenRoute = InviteTokenRouteImport.update({
   path: '/invite/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthVercelCallbackRoute = AuthVercelCallbackRouteImport.update({
-  id: '/auth/vercel/callback',
-  path: '/auth/vercel/callback',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AuthSupabaseCallbackRoute = AuthSupabaseCallbackRouteImport.update({
   id: '/auth/supabase/callback',
   path: '/auth/supabase/callback',
@@ -88,7 +82,6 @@ export interface FileRoutesByFullPath {
   '/workspaces/new': typeof WorkspacesNewRoute
   '/auth/github/callback': typeof AuthGithubCallbackRoute
   '/auth/supabase/callback': typeof AuthSupabaseCallbackRoute
-  '/auth/vercel/callback': typeof AuthVercelCallbackRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -101,7 +94,6 @@ export interface FileRoutesByTo {
   '/workspaces/new': typeof WorkspacesNewRoute
   '/auth/github/callback': typeof AuthGithubCallbackRoute
   '/auth/supabase/callback': typeof AuthSupabaseCallbackRoute
-  '/auth/vercel/callback': typeof AuthVercelCallbackRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -115,7 +107,6 @@ export interface FileRoutesById {
   '/workspaces/new': typeof WorkspacesNewRoute
   '/auth/github/callback': typeof AuthGithubCallbackRoute
   '/auth/supabase/callback': typeof AuthSupabaseCallbackRoute
-  '/auth/vercel/callback': typeof AuthVercelCallbackRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -130,7 +121,6 @@ export interface FileRouteTypes {
     | '/workspaces/new'
     | '/auth/github/callback'
     | '/auth/supabase/callback'
-    | '/auth/vercel/callback'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -143,7 +133,6 @@ export interface FileRouteTypes {
     | '/workspaces/new'
     | '/auth/github/callback'
     | '/auth/supabase/callback'
-    | '/auth/vercel/callback'
   id:
     | '__root__'
     | '/'
@@ -156,7 +145,6 @@ export interface FileRouteTypes {
     | '/workspaces/new'
     | '/auth/github/callback'
     | '/auth/supabase/callback'
-    | '/auth/vercel/callback'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -170,7 +158,6 @@ export interface RootRouteChildren {
   WorkspacesNewRoute: typeof WorkspacesNewRoute
   AuthGithubCallbackRoute: typeof AuthGithubCallbackRoute
   AuthSupabaseCallbackRoute: typeof AuthSupabaseCallbackRoute
-  AuthVercelCallbackRoute: typeof AuthVercelCallbackRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -231,13 +218,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InviteTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/auth/vercel/callback': {
-      id: '/auth/vercel/callback'
-      path: '/auth/vercel/callback'
-      fullPath: '/auth/vercel/callback'
-      preLoaderRoute: typeof AuthVercelCallbackRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/auth/supabase/callback': {
       id: '/auth/supabase/callback'
       path: '/auth/supabase/callback'
@@ -266,8 +246,17 @@ const rootRouteChildren: RootRouteChildren = {
   WorkspacesNewRoute: WorkspacesNewRoute,
   AuthGithubCallbackRoute: AuthGithubCallbackRoute,
   AuthSupabaseCallbackRoute: AuthSupabaseCallbackRoute,
-  AuthVercelCallbackRoute: AuthVercelCallbackRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
