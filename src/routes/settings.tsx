@@ -292,6 +292,7 @@ function SettingsPage() {
                 {ghState?.ok && <span className="text-success text-sm flex items-center gap-1"><Check className="h-4 w-4" /> {ghState.msg}</span>}
                 {ghState && !ghState.ok && <span className="text-error text-sm flex items-center gap-1"><X className="h-4 w-4" /> {ghState.msg}</span>}
               </div>
+              </div>
             </div>
           )}
         </section>
