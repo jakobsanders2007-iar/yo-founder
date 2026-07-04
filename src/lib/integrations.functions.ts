@@ -1497,3 +1497,232 @@ export const generateUiPreview = createServerFn({ method: "POST" })
     await supabase.from("prompts").update({ ui_preview_html: html }).eq("id", data.promptId);
     return { html };
   });
+
+/* =====================================================
+   GITHUB OAUTH (server-side code exchange)
+   ===================================================== */
+
+export const startGithubOAuth = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({ origin: z.string().url().max(300) }).parse(input)
+  )
+  .handler(async ({ data, context }) => {
+    const { userId } = context as any;
+    const clientId = process.env.GITHUB_OAUTH_CLIENT_ID;
+    if (!clientId) throw new Error("GitHub OAuth is not configured (missing GITHUB_OAUTH_CLIENT_ID)");
+    const state = `${userId}:${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+    const redirectUri = `${data.origin.replace(/\/$/, "")}/auth/github/callback`;
+    const url = new URL("https://github.com/login/oauth/authorize");
+    url.searchParams.set("client_id", clientId);
+    url.searchParams.set("redirect_uri", redirectUri);
+    url.searchParams.set("scope", "repo read:user user:email");
+    url.searchParams.set("state", state);
+    url.searchParams.set("allow_signup", "true");
+    return { url: url.toString(), state };
+  });
+
+export const completeGithubOAuth = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({
+      code: z.string().min(5).max(500),
+      state: z.string().min(5).max(500),
+      origin: z.string().url().max(300),
+    }).parse(input)
+  )
+  .handler(async ({ data, context }) => {
+    const { userId } = context as any;
+    if (!data.state.startsWith(`${userId}:`)) throw new Error("Invalid OAuth state");
+    const clientId = process.env.GITHUB_OAUTH_CLIENT_ID;
+    const clientSecret = process.env.GITHUB_OAUTH_CLIENT_SECRET;
+    if (!clientId || !clientSecret) throw new Error("GitHub OAuth is not configured");
+    const redirectUri = `${data.origin.replace(/\/$/, "")}/auth/github/callback`;
+
+    const tokenRes = await fetchWithTimeout("https://github.com/login/oauth/access_token", {
+      method: "POST",
+      headers: { Accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code: data.code, redirect_uri: redirectUri }),
+    });
+    const tokenJson: any = await tokenRes.json();
+    const token: string | undefined = tokenJson?.access_token;
+    if (!token) throw new Error(tokenJson?.error_description || "GitHub did not return a token");
+
+    // Verify user + fetch login server-side (don't trust the client)
+    const userRes = await fetchWithTimeout("https://api.github.com/user", {
+      headers: { Authorization: `Bearer ${token}`, "User-Agent": "YoFounder", Accept: "application/vnd.github+json" },
+    });
+    if (!userRes.ok) throw new Error("Couldn't fetch GitHub profile");
+    const gh = await userRes.json();
+    const login = gh?.login as string | undefined;
+    if (!login) throw new Error("GitHub returned no username");
+
+    // Save via admin (bypass RLS on profiles/profile_secrets writes)
+    const { error: pErr } = await supabaseAdmin.from("profiles")
+      .upsert({ id: userId, github_username: login, onboarded: true }, { onConflict: "id" });
+    if (pErr) throw new Error(pErr.message);
+    const { error: sErr } = await supabaseAdmin.from("profile_secrets")
+      .upsert({ user_id: userId, github_token: token, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+    if (sErr) throw new Error(sErr.message);
+    return { ok: true, login };
+  });
+
+/* =====================================================
+   SUPABASE MANAGEMENT API OAUTH
+   ===================================================== */
+
+async function mgmtGet(token: string, path: string) {
+  const res = await fetchWithTimeout(`https://api.supabase.com${path}`, {
+    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+  });
+  if (!res.ok) throw new Error(`Supabase Mgmt ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return res.json();
+}
+
+export const startSupabaseMgmtOAuth = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({ workspaceId: z.string().uuid(), origin: z.string().url().max(300) }).parse(input)
+  )
+  .handler(async ({ data, context }) => {
+    const { userId, supabase } = context as any;
+    await assertWorkspaceAccess(supabase, data.workspaceId);
+    const clientId = process.env.SB_MGMT_CLIENT_ID;
+    if (!clientId) throw new Error("Supabase OAuth not configured (missing SB_MGMT_CLIENT_ID)");
+    const state = `${userId}:${data.workspaceId}:${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+    const redirectUri = `${data.origin.replace(/\/$/, "")}/auth/supabase/callback`;
+    const url = new URL("https://api.supabase.com/v1/oauth/authorize");
+    url.searchParams.set("client_id", clientId);
+    url.searchParams.set("redirect_uri", redirectUri);
+    url.searchParams.set("response_type", "code");
+    url.searchParams.set("state", state);
+    return { url: url.toString(), state };
+  });
+
+export const completeSupabaseMgmtOAuth = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({
+      code: z.string().min(5).max(500),
+      state: z.string().min(5).max(500),
+      origin: z.string().url().max(300),
+    }).parse(input)
+  )
+  .handler(async ({ data, context }) => {
+    const { userId, supabase } = context as any;
+    const parts = data.state.split(":");
+    if (parts[0] !== userId || parts.length < 3) throw new Error("Invalid OAuth state");
+    const workspaceId = parts[1];
+    await assertWorkspaceAccess(supabase, workspaceId);
+
+    const clientId = process.env.SB_MGMT_CLIENT_ID;
+    const clientSecret = process.env.SB_MGMT_CLIENT_SECRET;
+    if (!clientId || !clientSecret) throw new Error("Supabase OAuth not configured");
+    const redirectUri = `${data.origin.replace(/\/$/, "")}/auth/supabase/callback`;
+
+    const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+    const body = new URLSearchParams({
+      grant_type: "authorization_code",
+      code: data.code,
+      redirect_uri: redirectUri,
+    });
+    const tokenRes = await fetchWithTimeout("https://api.supabase.com/v1/oauth/token", {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${basic}`,
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    });
+    if (!tokenRes.ok) throw new Error(`Token exchange failed: ${(await tokenRes.text()).slice(0, 200)}`);
+    const tj: any = await tokenRes.json();
+    const accessToken: string = tj.access_token;
+    const refreshToken: string | undefined = tj.refresh_token;
+    if (!accessToken) throw new Error("No access_token returned");
+
+    // Store the management token in workspace_secrets (add both if refresh present)
+    await upsertWorkspaceSecrets(workspaceId, {
+      supabase_mgmt_token: accessToken,
+      supabase_mgmt_refresh: refreshToken ?? null,
+    });
+    return { ok: true, workspaceId };
+  });
+
+async function getMgmtToken(workspaceId: string): Promise<string> {
+  const { data } = await supabaseAdmin.from("workspace_secrets")
+    .select("supabase_mgmt_token").eq("workspace_id", workspaceId).maybeSingle();
+  const t = (data as any)?.supabase_mgmt_token;
+  if (!t) throw new Error("Supabase not connected — click Connect Supabase");
+  return t;
+}
+
+export const listSupabaseMgmtProjects = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ workspaceId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context as any;
+    await assertWorkspaceAccess(supabase, data.workspaceId);
+    const token = await getMgmtToken(data.workspaceId);
+    const [orgs, projects] = await Promise.all([
+      mgmtGet(token, "/v1/organizations"),
+      mgmtGet(token, "/v1/projects"),
+    ]);
+    return {
+      organizations: (orgs ?? []).map((o: any) => ({ id: o.id, name: o.name })),
+      projects: (projects ?? []).map((p: any) => ({
+        id: p.id, name: p.name, region: p.region, organization_id: p.organization_id,
+        status: p.status,
+      })),
+    };
+  });
+
+export const connectSupabaseMgmtProject = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({ workspaceId: z.string().uuid(), projectRef: z.string().min(1).max(100) }).parse(input)
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase } = context as any;
+    await assertWorkspaceAccess(supabase, data.workspaceId);
+    const token = await getMgmtToken(data.workspaceId);
+    const [proj, keys] = await Promise.all([
+      mgmtGet(token, `/v1/projects/${encodeURIComponent(data.projectRef)}`),
+      mgmtGet(token, `/v1/projects/${encodeURIComponent(data.projectRef)}/api-keys`),
+    ]);
+    const anon = (keys ?? []).find((k: any) => k.name === "anon")?.api_key ?? null;
+    const service = (keys ?? []).find((k: any) => k.name === "service_role")?.api_key ?? null;
+    if (!service) throw new Error("Couldn't read service_role key — check OAuth app scopes");
+    const url = `https://${data.projectRef}.supabase.co`;
+    await upsertWorkspaceSecrets(data.workspaceId, {
+      supabase_url: url,
+      supabase_service_key: service,
+      supabase_anon_key: anon,
+      supabase_project_ref: data.projectRef,
+      supabase_project_name: proj?.name ?? null,
+    });
+    // Also mirror the display URL on the workspace row (existing column)
+    await supabase.from("workspaces")
+      .update({ supabase_project_url: url })
+      .eq("id", data.workspaceId);
+    return { ok: true, url, projectName: proj?.name ?? null };
+  });
+
+export const getSupabaseConnection = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ workspaceId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context as any;
+    await assertWorkspaceAccess(supabase, data.workspaceId);
+    const { data: row } = await supabaseAdmin.from("workspace_secrets")
+      .select("supabase_url, supabase_service_key, supabase_anon_key, supabase_project_ref, supabase_project_name, supabase_mgmt_token")
+      .eq("workspace_id", data.workspaceId).maybeSingle();
+    const r: any = row ?? {};
+    return {
+      hasMgmt: !!r.supabase_mgmt_token,
+      url: r.supabase_url ?? null,
+      anonKey: r.supabase_anon_key ?? null,
+      serviceKey: r.supabase_service_key ?? null,
+      projectRef: r.supabase_project_ref ?? null,
+      projectName: r.supabase_project_name ?? null,
+    };
+  });
