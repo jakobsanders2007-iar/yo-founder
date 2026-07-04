@@ -1466,40 +1466,39 @@ export const generateUiPreview = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase } = context as any;
     const { data: prompt, error } = await supabase
-      .from("prompts").select("id, title, content").eq("id", data.promptId).single();
+      .from("prompts").select("id, github_issue_number, workspace_id").eq("id", data.promptId).single();
     if (error || !prompt) throw new Error("Prompt not found");
-
-    const openaiKey = process.env.OPENAI_API_KEY;
-    const anthropicKey = process.env.ANTHROPIC_API_KEY;
-    const geminiKey = process.env.GEMINI_API_KEY;
-
-    const system = `You are a senior UI designer. Generate a single self-contained HTML document that visually mocks up the UI described below. Requirements:
-- Use only inline <style> + Tailwind CDN (<script src="https://cdn.tailwindcss.com"></script>).
-- Beautiful, modern, polished design (think Lovable / Linear / Vercel aesthetic).
-- Include realistic sample content (not lorem ipsum).
-- Fully responsive.
-- Return ONLY the raw HTML document starting with <!DOCTYPE html>. No markdown fences, no commentary.`;
-
-    const userText = `Title: ${prompt.title}\n\nDescription / requested change:\n${prompt.content}\n\nGenerate the HTML mockup now.`;
-
-    let html: string;
-    if (openaiKey) {
-      html = await callOpenAIRaw(openaiKey, system, userText, 6000);
-    } else if (anthropicKey) {
-      html = await callClaudeRaw(anthropicKey, system, userText, 6000);
-    } else if (geminiKey) {
-      html = await callGeminiRaw(geminiKey, system, userText, 6000);
-    } else {
-      throw new Error("No AI key configured on the server for UI preview generation.");
+    if (!prompt.github_issue_number || !prompt.workspace_id) {
+      return { previewUrl: null, building: false };
     }
 
-    html = html.trim().replace(/^```html\s*/i, "").replace(/^```\s*/, "").replace(/```\s*$/, "").trim();
-    if (!/^<!doctype html/i.test(html) && !/^<html/i.test(html)) {
-      html = `<!DOCTYPE html><html><head><meta charset="utf-8"><script src="https://cdn.tailwindcss.com"></script></head><body>${html}</body></html>`;
+    const secrets = await getWorkspaceSecrets(supabase, prompt.workspace_id);
+    if (!secrets.vercel_token || !secrets.vercel_project_id) {
+      return { previewUrl: null, building: false };
     }
 
-    await supabase.from("prompts").update({ ui_preview_html: html }).eq("id", data.promptId);
-    return { html };
+    try {
+      const deployments = await vercelGet(
+        secrets.vercel_token,
+        `/v6/deployments?projectId=${encodeURIComponent(secrets.vercel_project_id)}&meta-githubPullRequest=${encodeURIComponent(String(prompt.github_issue_number))}&limit=1`
+      );
+      const deployment = deployments.deployments?.[0];
+
+      if (!deployment) {
+        return { previewUrl: null, building: false };
+      }
+
+      const isReady = deployment.state === "READY" || deployment.readyState === "READY";
+      if (isReady && deployment.url) {
+        const previewUrl = `https://${deployment.url}`;
+        await supabase.from("prompts").update({ vercel_preview_url: previewUrl }).eq("id", data.promptId);
+        return { previewUrl, building: false };
+      }
+
+      return { previewUrl: null, building: true };
+    } catch (e) {
+      return { previewUrl: null, building: false };
+    }
   });
 
 /* =====================================================

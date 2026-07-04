@@ -1619,71 +1619,74 @@ function Modal({ onClose, title, children }: { onClose: () => void; title: strin
 
 /* ---------- UI Mockup pane (AI-generated HTML preview) ---------- */
 function UiPreviewPane({ prompt }: { prompt: any }) {
-  const [busy, setBusy] = useState(false);
-  const [html, setHtml] = useState<string | null>(prompt?.ui_preview_html ?? null);
-  const genFn = useServerFn(generateUiPreview);
+  const [loading, setLoading] = useState(false);
+  const [building, setBuilding] = useState(false);
+  const refreshFn = useServerFn(generateUiPreview);
 
-  useEffect(() => {
-    setHtml(prompt?.ui_preview_html ?? null);
-  }, [prompt?.id, prompt?.ui_preview_html]);
-
-  const generate = async () => {
+  const refresh = async () => {
     if (!prompt?.id) return toast.error("Pick or write a prompt first");
-    setBusy(true);
+    setLoading(true);
     try {
-      const r = await genFn({ data: { promptId: prompt.id } });
-      setHtml(r.html);
-      toast.success("UI mockup ready");
+      const r = await refreshFn({ data: { promptId: prompt.id } });
+      if (r.building) {
+        setBuilding(true);
+        toast.message("Still building — checking again in a moment");
+      } else if (r.previewUrl) {
+        setBuilding(false);
+        toast.success("Preview ready!");
+      } else {
+        setBuilding(false);
+        toast.message("No preview yet — make sure the PR is approved and deployed");
+      }
     } catch (e: any) {
-      toast.error(e?.message ?? "Couldn't generate the mockup");
+      toast.error(e?.message ?? "Couldn't refresh preview");
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
-  };
-
-  const openInNewTab = () => {
-    if (!html) return;
-    const blob = new Blob([html], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    window.open(url, "_blank", "noopener,noreferrer");
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
 
   if (!prompt) {
     return (
       <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-        Write or select a prompt to generate a UI mockup.
+        Write or select a prompt to see a Vercel preview.
       </div>
     );
   }
+
+  const hasPreview = !!prompt.vercel_preview_url;
 
   return (
     <div className="h-full flex flex-col bg-[#0a0a0a]">
       <div className="flex items-center justify-between gap-2 px-4 py-2 border-b border-[#1e1e1e]">
         <div className="text-xs text-muted-foreground truncate">
-          AI-generated visual mockup for: <span className="text-foreground/90">{prompt.title}</span>
+          Vercel deployment preview for: <span className="text-foreground/90">{prompt.title}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={generate} disabled={busy}
-            className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded bg-amber-500 text-background font-medium hover:opacity-90 disabled:opacity-50">
-            <Sparkles className="h-3.5 w-3.5" />
-            {busy ? "Generating..." : html ? "Regenerate" : "Generate UI mockup"}
-          </button>
-          {html && (
-            <button onClick={openInNewTab}
-              className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-[#1e1e1e] text-foreground/90 hover:border-foreground">
-              <ExternalLink className="h-3.5 w-3.5" /> Open in new tab
-            </button>
-          )}
-        </div>
+        <button onClick={refresh} disabled={loading}
+          className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-[#1e1e1e] text-foreground/90 hover:border-foreground disabled:opacity-50">
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+          {loading ? "Checking..." : "Refresh"}
+        </button>
       </div>
       <div className="flex-1 min-h-0 bg-white">
-        {html ? (
-          <iframe srcDoc={html} title="UI mockup" className="w-full h-full border-0"
-            sandbox="allow-scripts allow-same-origin allow-forms" />
+        {hasPreview ? (
+          <iframe src={prompt.vercel_preview_url} title="Vercel preview" className="w-full h-full border-0" />
         ) : (
-          <div className="h-full flex items-center justify-center text-sm text-muted-foreground bg-[#0a0a0a]">
-            {busy ? "Designing your mockup..." : "Click \"Generate UI mockup\" to visualize this prompt before building."}
+          <div className="h-full flex items-center justify-center flex-col gap-3 text-sm text-muted-foreground bg-[#0a0a0a] px-4 text-center max-w-md">
+            {building ? (
+              <>
+                <Loader2 className="h-6 w-6 animate-spin text-brand" />
+                <p>Building your preview — usually takes under a minute after approving.</p>
+              </>
+            ) : (
+              <>
+                <Eye className="h-6 w-6" />
+                <p>Preview will appear here once Vercel finishes building — usually under a minute after approving.</p>
+                <button onClick={refresh}
+                  className="text-xs px-3 py-1.5 rounded bg-foreground/10 hover:bg-foreground/20 text-foreground">
+                  Check again
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
