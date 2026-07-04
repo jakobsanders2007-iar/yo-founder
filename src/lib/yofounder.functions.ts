@@ -248,8 +248,6 @@ export const respondAsCofounderAi = createServerFn({ method: "POST" })
     const { supabase, userId } = context as any;
     const { data: isMember } = await supabase.rpc("is_workspace_member", { _workspace_id: data.workspaceId });
     if (!isMember) throw new Error("Not a member of this workspace");
-  .handler(async ({ data, context }) => {
-    const { supabase, userId } = context as any;
     const { data: members } = await supabase
       .from("workspace_members")
       .select("user_id")
