@@ -395,6 +395,11 @@ export type Database = {
       workspace_secrets: {
         Row: {
           created_at: string
+          supabase_anon_key: string | null
+          supabase_mgmt_refresh: string | null
+          supabase_mgmt_token: string | null
+          supabase_project_name: string | null
+          supabase_project_ref: string | null
           supabase_service_key: string | null
           supabase_url: string | null
           updated_at: string
@@ -403,6 +408,11 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          supabase_anon_key?: string | null
+          supabase_mgmt_refresh?: string | null
+          supabase_mgmt_token?: string | null
+          supabase_project_name?: string | null
+          supabase_project_ref?: string | null
           supabase_service_key?: string | null
           supabase_url?: string | null
           updated_at?: string
@@ -411,6 +421,11 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          supabase_anon_key?: string | null
+          supabase_mgmt_refresh?: string | null
+          supabase_mgmt_token?: string | null
+          supabase_project_name?: string | null
+          supabase_project_ref?: string | null
           supabase_service_key?: string | null
           supabase_url?: string | null
           updated_at?: string
