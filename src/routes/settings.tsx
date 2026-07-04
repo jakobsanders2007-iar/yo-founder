@@ -40,6 +40,16 @@ function SettingsPage() {
 
   const saveAi = useServerFn(saveAiKey);
   const saveGh = useServerFn(saveGithubToken);
+  const startGh = useServerFn(startGithubOAuth);
+
+  const connectGithubOAuth = async () => {
+    try {
+      const { url } = await startGh({ data: { origin: window.location.origin } });
+      window.location.href = url;
+    } catch (e: any) {
+      toast.error(e?.message ?? "Couldn't start GitHub connect");
+    }
+  };
 
   useEffect(() => {
     if (loading) return;
