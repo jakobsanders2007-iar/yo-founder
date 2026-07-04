@@ -1,28 +1,24 @@
-## What changes
+## Diagnosis
 
-**FIX 4 — Vercel + Supabase tabs**
-Already in the right shape. `VercelTab` and `SupabaseTab` already render:
-- A signup CTA ("Set up Vercel" / "Set up Supabase") that opens the provider's signup page in a new tab
-- A "paste your URL" input + Save button as the fallback
-- A connected view once the URL is saved
+The Vite dev server inside the sandbox is healthy:
+- `vite dev` started cleanly on port 8080, no errors in the daemon log.
+- `curl http://localhost:8080/` returns HTTP 200 with the fully rendered HTML shell (title, meta, root layout, index route markup).
 
-No code change needed. The previous "build OAuth" plan is dropped. I'll cancel the pending secret request (`VERCEL_CLIENT_ID` etc.) — you can ignore that prompt.
+That means the app is building and SSR-ing correctly. The "Preview has not been built yet…" banner you're seeing is from the Lovable preview iframe layer, not from your code.
 
-**FIX 3 — GitHub sub-tabs**
-Restructure `RepoDashboard` inside `src/components/tabs/GithubTab.tsx` to expose 3 sub-tabs under the existing repo header:
+## Recommended action (no code changes)
 
-1. **Pull Requests** (default) — current PR list with inline expandable diffs and Approve flow. No behavior change.
-2. **Files** — new view that lists the repo's top-level files/folders for the default branch via GitHub's `GET /repos/{owner}/{repo}/contents` (a new `listGithubRepoFiles` server fn in `src/lib/integrations.functions.ts`). Click a folder to drill in, click a file to open it on GitHub. Read-only.
-3. **Activity** — recent commits (current "Recent updates" section), promoted out of the collapsed section into a full sub-tab.
+1. Hard-refresh the preview pane (or reopen it) so it re-attaches to the running dev server.
+2. If it still shows the banner, click **Rebuild preview** / reacquire the sandbox from the preview UI.
+3. If the banner persists after that, it's a transient preview-infra issue on Lovable's side — re-sending any message will trigger a fresh sandbox and clear it.
 
-The header (repo name, Open on GitHub, Change project, Refresh) stays above the sub-tab bar. The Approve-merge modal stays at the dashboard level.
+## What I will NOT change
 
-### Files touched
-- `src/components/tabs/GithubTab.tsx` — add sub-tab state + 3 sub-views, move commits out of the inline collapsible
-- `src/lib/integrations.functions.ts` — add `listGithubRepoFiles({ workspaceId, path? })`
+- No source files. There is no error to fix — build output is clean, route tree generates, root SSR returns 200.
+- No `vite.config.ts`, `src/server.ts`, or `__root.tsx` edits — the SSR error-handling stack is already wired and working.
 
-### Out of scope
-- No DB migrations
-- No new secrets
-- No changes to `VercelTab` / `SupabaseTab`
-- No changes to chat, invites, or onboarding
+If a hard refresh doesn't clear it, tell me and I'll take a Playwright screenshot of the preview and dig into the preview-layer network calls to see what's actually failing.
+
+<presentation-actions>
+<presentation-link url="https://docs.lovable.dev/tips-tricks/troubleshooting">Troubleshooting docs</presentation-link>
+</presentation-actions>

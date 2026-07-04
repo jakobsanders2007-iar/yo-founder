@@ -395,6 +395,7 @@ export type Database = {
       workspace_secrets: {
         Row: {
           created_at: string
+          custom_ai_keys: Json
           supabase_anon_key: string | null
           supabase_mgmt_refresh: string | null
           supabase_mgmt_token: string | null
@@ -403,11 +404,14 @@ export type Database = {
           supabase_service_key: string | null
           supabase_url: string | null
           updated_at: string
+          vercel_project_id: string | null
+          vercel_project_name: string | null
           vercel_token: string | null
           workspace_id: string
         }
         Insert: {
           created_at?: string
+          custom_ai_keys?: Json
           supabase_anon_key?: string | null
           supabase_mgmt_refresh?: string | null
           supabase_mgmt_token?: string | null
@@ -416,11 +420,14 @@ export type Database = {
           supabase_service_key?: string | null
           supabase_url?: string | null
           updated_at?: string
+          vercel_project_id?: string | null
+          vercel_project_name?: string | null
           vercel_token?: string | null
           workspace_id: string
         }
         Update: {
           created_at?: string
+          custom_ai_keys?: Json
           supabase_anon_key?: string | null
           supabase_mgmt_refresh?: string | null
           supabase_mgmt_token?: string | null
@@ -429,6 +436,8 @@ export type Database = {
           supabase_service_key?: string | null
           supabase_url?: string | null
           updated_at?: string
+          vercel_project_id?: string | null
+          vercel_project_name?: string | null
           vercel_token?: string | null
           workspace_id?: string
         }
