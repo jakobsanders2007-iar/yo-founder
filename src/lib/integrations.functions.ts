@@ -316,6 +316,73 @@ export const deleteVercelEnvVar = createServerFn({ method: "POST" })
   });
 
 /* =====================================================
+   VERCEL OAUTH (server-side code exchange)
+   ===================================================== */
+
+export const startVercelOAuth = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({ workspaceId: z.string().uuid(), origin: z.string().url().max(300) }).parse(input)
+  )
+  .handler(async ({ data, context }) => {
+    const { userId, supabase } = context as any;
+    await assertWorkspaceAccess(supabase, data.workspaceId);
+    const clientId = process.env.VERCEL_OAUTH_CLIENT_ID;
+    if (!clientId) throw new Error("Vercel OAuth not configured (missing VERCEL_OAUTH_CLIENT_ID)");
+    const state = `${userId}:${data.workspaceId}:${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+    const redirectUri = `${data.origin.replace(/\/$/, "")}/auth/vercel/callback`;
+    const url = new URL("https://vercel.com/oauth/authorize");
+    url.searchParams.set("client_id", clientId);
+    url.searchParams.set("redirect_uri", redirectUri);
+    url.searchParams.set("response_type", "code");
+    url.searchParams.set("state", state);
+    return { url: url.toString(), state };
+  });
+
+export const completeVercelOAuth = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({
+      code: z.string().min(5).max(500),
+      state: z.string().min(5).max(500),
+      origin: z.string().url().max(300),
+    }).parse(input)
+  )
+  .handler(async ({ data, context }) => {
+    const { userId, supabase } = context as any;
+    const parts = data.state.split(":");
+    if (parts[0] !== userId || parts.length < 3) throw new Error("Invalid OAuth state");
+    const workspaceId = parts[1];
+    await assertWorkspaceAccess(supabase, workspaceId);
+
+    const clientId = process.env.VERCEL_OAUTH_CLIENT_ID;
+    const clientSecret = process.env.VERCEL_OAUTH_CLIENT_SECRET;
+    if (!clientId || !clientSecret) throw new Error("Vercel OAuth not configured");
+    const redirectUri = `${data.origin.replace(/\/$/, "")}/auth/vercel/callback`;
+
+    const body = new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      code: data.code,
+      redirect_uri: redirectUri,
+    });
+    const tokenRes = await fetchWithTimeout("https://api.vercel.com/v2/oauth/access_token", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    });
+    if (!tokenRes.ok) throw new Error(`Token exchange failed: ${(await tokenRes.text()).slice(0, 200)}`);
+    const tj: any = await tokenRes.json();
+    const accessToken: string = tj.access_token;
+    if (!accessToken) throw new Error("No access_token returned");
+
+    await upsertWorkspaceSecrets(workspaceId, {
+      vercel_token: accessToken,
+    });
+    return { ok: true, workspaceId };
+  });
+
+/* =====================================================
    USER'S SUPABASE PROJECT (remote, via their service key)
    ===================================================== */
 
